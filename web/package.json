@@ -1,7 +1,7 @@
 {
   "name": "jellycord-web",
   "description": "Jellycord is crafted for u to stay connected, and have fun with friends while coding, biking or just doing whatever u want!",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "scripts": {
     "build": "next build",

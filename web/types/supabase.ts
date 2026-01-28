@@ -26,7 +26,7 @@ export interface Database {
           username?: string | null
           name?: string | null
           bio?: string | null
-          avatar: string | null
+          avatar?: string | null
           character?: string | null
           banner?: string | null
           primary_color?: string | null

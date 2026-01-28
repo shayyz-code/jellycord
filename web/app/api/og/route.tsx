@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
   }
 
   const name = profile?.name || "Jellycord User"
-  const bio = profile?.bio || "Share your profile in the cutest way"
-  const primaryColor = profile?.primaryColor || "#f472b6"
+  const bio = profile?.bio || "Stay connected w/ ur Mates!"
+  const primaryColor = profile?.primaryColor || "#facc15"
   const avatar = profile?.avatar
   const character = profile?.character
   const banner = profile?.banner
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-around",
-        backgroundColor: "#fdf2f8",
+        backgroundColor: "#0c0c09",
         backgroundImage: `radial-gradient(circle at 20% 80%, ${primaryColor}30 0%, transparent 50%), radial-gradient(circle at 80% 20%, ${primaryColor}20 0%, transparent 50%)`,
       }}
     >

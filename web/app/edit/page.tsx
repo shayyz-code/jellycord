@@ -22,7 +22,6 @@ import {
   Check,
   MessageCircle,
 } from "lucide-react"
-import type { Profile } from "@/app/api/profile/route"
 import type { Status } from "@/app/api/status/route"
 import { StatusComposer } from "@/components/status-composer"
 import { StatusFeed } from "@/components/status-feed"
