@@ -1,11 +1,13 @@
 interface JellycordLogoProps {
   primaryColor: string
   size?: "sm" | "md"
+  as?: "h1" | "div" | "span"
 }
 
 export function JellycordLogo({
   primaryColor,
   size = "md",
+  as: Component = "h1",
 }: JellycordLogoProps) {
   const svgSize = size === "sm" ? 28 : 36
   const textSize = size === "sm" ? "text-xl" : "text-2xl"
@@ -41,9 +43,9 @@ export function JellycordLogo({
           fill="none"
         />
       </svg>
-      <h1 className={`${textSize} font-bold text-foreground`}>
+      <Component className={`${textSize} font-bold text-foreground`}>
         jelly<span style={{ color: primaryColor }}>cord</span>
-      </h1>
+      </Component>
     </div>
   )
 }

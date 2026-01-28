@@ -5,8 +5,8 @@ import { PublicProfile } from "./public-profile"
 // Demo profiles store (shared with API in a real app)
 async function getProfile(username: string) {
   // In production, this would fetch from your API
-  const baseUrl = process.env.BASE_URL
-    ? `${process.env.BASE_URL}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}`
     : "http://localhost:3000"
 
   console.log("base url: ", baseUrl)
@@ -26,8 +26,8 @@ async function getProfile(username: string) {
 }
 
 async function getStatuses(username: string) {
-  const baseUrl = process.env.BASE_URL
-    ? `${process.env.BASE_URL}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}`
     : "http://localhost:3000"
 
   try {
@@ -71,6 +71,7 @@ export async function generateMetadata({
       title,
       description,
       type: "profile",
+      username: profile.username || undefined,
       images: [
         {
           url: `/api/og?username=${username}`,
@@ -98,5 +99,26 @@ export default async function ProfilePage({ params }: PageProps) {
     notFound()
   }
 
-  return <PublicProfile profile={profile} statuses={statuses} />
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: profile.name,
+    alternateName: profile.username,
+    description: profile.bio,
+    image: profile.avatar,
+    url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/${username}`,
+    sameAs: profile.links
+      ? Object.values(profile.links).filter((link) => typeof link === "string")
+      : [],
+  }
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <PublicProfile profile={profile} statuses={statuses} />
+    </>
+  )
 }

@@ -5,8 +5,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const username = searchParams.get("username")
 
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}`
     : "http://localhost:3000"
 
   // Fetch profile data
@@ -32,20 +32,16 @@ export async function GET(request: NextRequest) {
   const banner = profile?.banner
 
   // Get the avatar image URL
-  const avatarUrl = avatar
-    ? avatar
-    : `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}/placeholder-user.jpg`
+  const avatarUrl = avatar ? avatar : `${baseUrl}/placeholder-user.jpg`
 
   // Get the character image URL
-  const characterUrl = character
-    ? `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}${character}`
-    : null
+  const characterUrl = character ? `${baseUrl}${character}` : null
 
   // Get the banner image URL
   const bannerUrl =
     banner && banner !== "/banners/default-banner.jpg"
       ? banner
-      : `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}/banners/default-banner.jpg`
+      : `${baseUrl}/banners/default-banner.jpg`
 
   return new ImageResponse(
     <div

@@ -57,15 +57,6 @@ export function PublicProfile({ profile, statuses }: PublicProfileProps) {
         backgroundColor: "var(--background)",
       }}
     >
-      <motion.div
-        className="mb-8"
-        initial="initial"
-        animate="animate"
-        variants={fadeInUp}
-      >
-        <JellycordLogo primaryColor={profile.primaryColor} size="sm" />
-      </motion.div>
-
       <div className="w-full max-w-xl space-y-8">
         <motion.div
           initial="initial"
@@ -82,6 +73,7 @@ export function PublicProfile({ profile, statuses }: PublicProfileProps) {
             links={profileLinks}
             primaryColor={profile.primaryColor}
             latestStatus={statuses[0]}
+            nameTag="h1"
           />
         </motion.div>
 
@@ -101,9 +93,8 @@ export function PublicProfile({ profile, statuses }: PublicProfileProps) {
           </motion.div>
         )}
       </div>
-
       <motion.footer
-        className="mt-12 text-center"
+        className="mt-12 text-center "
         initial="initial"
         whileInView="animate"
         viewport={{ once: true }}
@@ -115,7 +106,12 @@ export function PublicProfile({ profile, statuses }: PublicProfileProps) {
           className="text-sm text-muted-foreground font-bold hover:text-foreground transition-colors"
           style={{ color: profile.primaryColor }}
         >
-          Create your own profile on Jellycord
+          <span className="block mb-2">Create your own profile on</span>
+          <JellycordLogo
+            primaryColor={profile.primaryColor}
+            size="sm"
+            as="div"
+          />
         </a>
       </motion.footer>
     </main>

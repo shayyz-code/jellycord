@@ -30,6 +30,7 @@ interface ProfileCardProps {
   links: SocialLink[]
   primaryColor: string
   latestStatus?: Status | null
+  nameTag?: "h1" | "h2"
 }
 
 const iconMap = {
@@ -52,6 +53,7 @@ export function ProfileCard({
   links,
   primaryColor,
   latestStatus,
+  nameTag: NameTag = "h2",
 }: ProfileCardProps) {
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -178,7 +180,9 @@ export function ProfileCard({
         {/* Content */}
         <div className="px-6 pt-3 pb-6 space-y-4">
           <div>
-            <h2 className="text-xl font-bold text-card-foreground">{name}</h2>
+            <NameTag className="text-xl font-bold text-card-foreground">
+              {name}
+            </NameTag>
             <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
               {bio}
             </p>
