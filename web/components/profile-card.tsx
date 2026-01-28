@@ -86,7 +86,7 @@ export function ProfileCard({
     >
       <Card className="w-full overflow-hidden shadow-xl border-2 py-0 border-border/50 bg-card transition-shadow duration-200 hover:shadow-2xl">
         {/* Banner */}
-        <div className="relative h-28 overflow-hidden">
+        <div className="relative h-40 overflow-hidden">
           {banner ? (
             <Image
               src={banner || "/placeholder.svg"}
@@ -114,7 +114,7 @@ export function ProfileCard({
         </div>
 
         {/* Avatar */}
-        <div className="relative px-6 -mt-12 flex justify-between">
+        <div className="relative px-6 -mt-16 flex justify-between">
           <motion.div
             className="relative w-28 h-28"
             whileHover={{ scale: 1.05 }}
