@@ -116,7 +116,7 @@ export function ProfileCard({
         {/* Avatar */}
         <div className="relative px-6 -mt-12 flex justify-between">
           <motion.div
-            className="relative w-24 h-24"
+            className="relative w-28 h-28"
             whileHover={{ scale: 1.05 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
           >
@@ -124,12 +124,40 @@ export function ProfileCard({
               src={avatar || "/placeholder-user.jpg"}
               alt={name}
               fill
-              className="object-cover z-10"
+              className="object-cover z-10 rounded-full border-2"
+              style={{ borderColor: primaryColor }}
             />
             <div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 blur-2xl"
               style={{ backgroundColor: primaryColor }}
             />
+            {/* Latest Status */}
+            {latestStatus && (
+              <div
+                className="absolute top-1/2 left-32 -translate-y-1/2 px-3 py-2 bg-background rounded-xl z-30 border"
+                style={{ borderColor: primaryColor }}
+              >
+                <div className="flex items-start gap-2">
+                  <MessageCircle
+                    className="w-4 h-4 mt-0.5 shrink-0"
+                    style={{ color: primaryColor }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-card-foreground">
+                      {latestStatus.content}
+                    </p>
+                    {latestStatus.mood && (
+                      <span
+                        className="inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full text-white"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        {latestStatus.mood}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </motion.div>
 
           {/* Character */}
@@ -155,34 +183,6 @@ export function ProfileCard({
               {bio}
             </p>
           </div>
-
-          {/* Latest Status */}
-          {latestStatus && (
-            <div
-              className="p-3 rounded-xl"
-              style={{ backgroundColor: `${primaryColor}15` }}
-            >
-              <div className="flex items-start gap-2">
-                <MessageCircle
-                  className="w-4 h-4 mt-0.5 shrink-0"
-                  style={{ color: primaryColor }}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-card-foreground">
-                    {latestStatus.content}
-                  </p>
-                  {latestStatus.mood && (
-                    <span
-                      className="inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full text-white"
-                      style={{ backgroundColor: primaryColor }}
-                    >
-                      {latestStatus.mood}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Links */}
           <div className="space-y-2">

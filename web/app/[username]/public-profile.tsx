@@ -93,7 +93,7 @@ export function PublicProfile({ profile, statuses }: PublicProfileProps) {
             variants={fadeInUp}
             transition={{ delay: 0.2 }}
           >
-            <h3 className="text-lg font-semibold mb-4 px-2">Recent Updates</h3>
+            <h3 className="text-lg font-semibold mb-4 px-2">Updates</h3>
             <StatusFeed
               statuses={statuses}
               primaryColor={profile.primaryColor}
@@ -112,10 +112,10 @@ export function PublicProfile({ profile, statuses }: PublicProfileProps) {
       >
         <a
           href="/"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="text-sm text-muted-foreground font-bold hover:text-foreground transition-colors"
           style={{ color: profile.primaryColor }}
         >
-          Create your own Jellycord profile
+          Create your own profile on Jellycord
         </a>
       </motion.footer>
     </main>

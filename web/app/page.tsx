@@ -78,7 +78,9 @@ export default function Home() {
         className="text-center mb-8 relative z-10"
       >
         <JellycordLogo primaryColor={primaryColor} />
-        <p className="text-muted-foreground text-sm mt-2">Share your profile</p>
+        <p className="text-muted-foreground text-sm mt-2">
+          I&apos;m crafted for u to stay connected w/ ur mates.
+        </p>
       </motion.div>
 
       {/* Main Content */}

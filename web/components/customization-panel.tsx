@@ -13,6 +13,7 @@ interface CustomizationPanelProps {
   onCharacterChange: (character: string) => void
   banner: string
   onBannerChange: (banner: string) => void
+  userId?: string
 }
 
 export function CustomizationPanel({
@@ -22,6 +23,7 @@ export function CustomizationPanel({
   onCharacterChange,
   banner,
   onBannerChange,
+  userId,
 }: CustomizationPanelProps) {
   return (
     <Card className="w-full max-w-sm p-5 space-y-5 border-2 border-border/50 bg-card">
@@ -82,7 +84,11 @@ export function CustomizationPanel({
             Profile Banner
           </span>
         </div>
-        <BannerPicker banner={banner} onBannerChange={onBannerChange} />
+        <BannerPicker
+          banner={banner}
+          onBannerChange={onBannerChange}
+          userId={userId}
+        />
       </div>
     </Card>
   )

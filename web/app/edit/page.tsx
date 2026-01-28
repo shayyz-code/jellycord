@@ -97,7 +97,7 @@ export default function EditProfilePage() {
           setName(data.profile.name || "")
           setBio(data.profile.bio || "")
           setPrimaryColor(data.profile.primaryColor || "#f472b6")
-          setCharacter(data.profile.avatar || "/placeholder-user.jpg")
+          setAvatar(data.profile.avatar || "/placeholder-user.jpg")
           setCharacter(data.profile.character || "/characters/pixel-cat.jpg")
           setBanner(data.profile.banner || "/banners/default-banner.jpg")
           setLinks(data.profile.links || {})
@@ -212,7 +212,7 @@ export default function EditProfilePage() {
 
       {/* Share URL */}
       <div className="max-w-md mx-auto mb-6">
-        <div className="flex items-center gap-2 p-2 bg-card rounded-xl border border-border">
+        <div className="flex items-center gap-2 p-2 bg-card border border-border">
           <div className="flex-1 px-3 py-2 text-sm truncate text-muted-foreground">
             {profileUrl}
           </div>
@@ -349,7 +349,11 @@ export default function EditProfilePage() {
                   </div>
                   <div>
                     <Label className="mb-3 block">Banner</Label>
-                    <BannerPicker banner={banner} onBannerChange={setBanner} />
+                    <BannerPicker
+                      banner={banner}
+                      onBannerChange={setBanner}
+                      userId={user.id}
+                    />
                   </div>
                 </CardContent>
               </Card>

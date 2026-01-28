@@ -105,9 +105,9 @@ export function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={logout}
-          className="cursor-pointer text-destructive focus:bg-red-700"
+          className="group cursor-pointer text-destructive focus:bg-red-700 focus:text-white"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="mr-2 h-4 w-4 text-red-700 group-focus:text-white" />
           Sign Out
         </DropdownMenuItem>
       </DropdownMenuContent>
