@@ -1,0 +1,3 @@
+provider: generic
+url: https://jellycord.com/auto-updates
+updaterCacheDirName: jellycord-updater
