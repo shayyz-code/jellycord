@@ -5,8 +5,8 @@ import { PublicProfile } from "./public-profile"
 // Demo profiles store (shared with API in a real app)
 async function getProfile(username: string) {
   // In production, this would fetch from your API
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
+  const baseUrl = process.env.BASE_URL
+    ? `${process.env.BASE_URL}`
     : "http://localhost:3000"
 
   console.log("base url: ", baseUrl)
@@ -26,8 +26,8 @@ async function getProfile(username: string) {
 }
 
 async function getStatuses(username: string) {
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
+  const baseUrl = process.env.BASE_URL
+    ? `${process.env.BASE_URL}`
     : "http://localhost:3000"
 
   try {
