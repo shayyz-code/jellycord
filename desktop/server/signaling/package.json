@@ -2,6 +2,7 @@
   "name": "jellycord-server-signaling",
   "module": "index.ts",
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "start": "bun run index.ts"
   },

@@ -3,6 +3,7 @@
   "description": "Jellycord is crafted for u to stay connected, and have fun with friends while coding, biking or just doing whatever u want!",
   "version": "0.1.6",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "build": "next build",
     "dev": "next dev",

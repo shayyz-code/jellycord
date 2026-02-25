@@ -5,6 +5,7 @@
   "main": "./out/main/index.js",
   "author": "codewithshayy.com",
   "homepage": "https://jellycord.com",
+  "license": "MIT",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
