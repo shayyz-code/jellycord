@@ -1,4 +1,6 @@
 .env
+.env.deploy
+.env.secrets
 bin/
 dist/
 jellycord

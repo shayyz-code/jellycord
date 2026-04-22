@@ -188,6 +188,29 @@ PORT=3001 npm run dev
 - Ensure `NEXT_PUBLIC_APP_URL` is set to your deployed origin for correct OG image and robots/sitemap URLs.
 - For the desktop auto-updater, see `desktop/electron-builder.yml` and `desktop/dev-app-update.yml`.
 
+### Go Chat Server (Docker on VPS)
+
+- **Prod compose**: `docker-compose.prod.yml`
+- **Deploy config**: copy `.env.deploy.example` to `.env.deploy` and set:
+  - `JELLYCORD_VPS_IP`
+  - `JELLYCORD_BIND_IP` (default `127.0.0.1`)
+  - `JELLYCORD_HOST_PORT` (default `8080`)
+- **Secrets**: copy `.env.secrets.example` to `.env.secrets` and set:
+  - `JELLYCORD_JWT_SECRET`
+  - `JELLYCORD_ADMIN_KEY`
+
+Run on VPS:
+
+```bash
+./scripts/vps-deploy.sh
+cd ~/jellycord
+cp .env.deploy.example .env.deploy
+nano .env.deploy
+cp .env.secrets.example .env.secrets
+nano .env.secrets
+docker compose --env-file .env.deploy -f docker-compose.prod.yml --env-file .env.secrets up -d --build
+```
+
 ## License
 
 [MIT](./LICENSE)

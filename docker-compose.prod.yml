@@ -1,0 +1,25 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    # Secrets should be provided via an env file (see README):
+    #   docker compose --env-file .env.deploy -f docker-compose.prod.yml --env-file .env.secrets up -d --build
+    depends_on:
+      - redis
+    ports:
+      # Configure via `.env.deploy` (host bind ip + host port)
+      # Put Caddy/Nginx in front for TLS.
+      - "${JELLYCORD_BIND_IP:-127.0.0.1}:${JELLYCORD_HOST_PORT:-8080}:8080"
+
+volumes:
+  redis-data:
+
