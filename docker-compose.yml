@@ -13,6 +13,8 @@ services:
     environment:
       JELLYCORD_ADDR: ":8080"
       JELLYCORD_REDIS_URL: "redis://redis:6379/0"
+      JELLYCORD_JWT_SECRET: "dev-insecure-secret-change-me"
+      JELLYCORD_ADMIN_KEY: "dev-admin-key-change-me"
     depends_on:
       - redis
     ports:

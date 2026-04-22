@@ -4,13 +4,31 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/redis/go-redis/v9"
+
+	"github.com/shayyz-code/jellycord/server/internal/auth"
 	"github.com/shayyz-code/jellycord/server/internal/config"
 	"github.com/shayyz-code/jellycord/server/internal/httpapi"
+	"github.com/shayyz-code/jellycord/server/internal/store"
 )
 
 func main() {
 	cfg := config.Load()
-	mux := httpapi.NewMux()
+
+	j, err := auth.NewJWT(cfg.JWTSecret)
+	if err != nil {
+		log.Fatalf("jwt config error: %v", err)
+	}
+
+	opt, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("redis url error: %v", err)
+	}
+	rdb := redis.NewClient(opt)
+	st := store.New(rdb)
+
+	api := httpapi.New(cfg, st, j)
+	mux := api.Mux()
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,
