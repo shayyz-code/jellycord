@@ -1,6 +1,8 @@
 .env
 bin/
 dist/
+jellycord
+jellycord-server
 **/*.exe
 **/*.test
 **/*.out

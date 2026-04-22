@@ -3,34 +3,23 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
+
+	"github.com/shayyz-code/jellycord/server/internal/config"
+	"github.com/shayyz-code/jellycord/server/internal/httpapi"
 )
 
 func main() {
-	addr := envOr("JELLYCORD_ADDR", ":8080")
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	})
+	cfg := config.Load()
+	mux := httpapi.NewMux()
 
 	srv := &http.Server{
-		Addr:    addr,
+		Addr:    cfg.Addr,
 		Handler: mux,
 	}
 
-	log.Printf("jellycord-server listening on %s", addr)
+	log.Printf("jellycord-server listening on %s", cfg.Addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
-}
-
-func envOr(k, fallback string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return fallback
 }
 
