@@ -1,4 +1,4 @@
-.PHONY: help go-fmt go-tidy go-test go-test-watch go-build server-run cli-run docker-build docker-up docker-down docker-logs dev-up dev-down lint test-unit test-integration coverage deploy
+.PHONY: help go-fmt go-tidy go-test go-test-watch go-build server-run cli-run docker-build docker-up docker-down docker-logs dev-up dev-down lint test-unit test-integration coverage deploy install
 
 ## Colors
 BLUE   := \033[34m
@@ -26,6 +26,7 @@ help:
 	@printf "  $(CYAN)make coverage$(RESET)       - run tests and show coverage\n"
 	@printf "  $(CYAN)make lint$(RESET)           - run golangci-lint\n"
 	@printf "  $(CYAN)make go-build$(RESET)       - build ./jellycord and ./jellycord-server\n"
+	@printf "  $(CYAN)make install$(RESET)        - install jellycord CLI to GOBIN\n"
 	@printf "\n"
 	@printf "  $(CYAN)make server-run$(RESET)     - run server locally (uses Redis at localhost)\n"
 	@printf "  $(CYAN)make cli-run$(RESET)        - run CLI locally\n"
@@ -81,6 +82,11 @@ go-build: go-tidy
 	@go build -o jellycord-server $(SERVER_MAIN)
 	@go build -o jellycord $(CLI_MAIN)
 	@echo "$(GREEN)built: ./jellycord-server ./jellycord$(RESET)"
+
+install: go-tidy
+	@echo "$(BLUE)installing jellycord CLI...$(RESET)"
+	@go install $(CLI_MAIN)
+	@echo "$(GREEN)installed: $$(go env GOPATH)/bin/jellycord$(RESET)"
 
 server-run: dev-up
 	@echo "$(BLUE)running server on $(SERVER_ADDR)...$(RESET)"
