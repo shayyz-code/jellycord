@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -78,30 +75,9 @@ func cmdLogin(args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	body, _ := json.Marshal(map[string]string{"username": *username, "password": *password})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(*server, "/")+"/auth/login", bytes.NewReader(body))
+	out, err := client.Login(ctx, *server, *username, *password)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	var out struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		fmt.Fprintln(os.Stderr, "failed to decode response:", err)
-		os.Exit(1)
-	}
-	if resp.StatusCode != 200 || out.Token == "" {
-		fmt.Fprintln(os.Stderr, "login failed")
 		os.Exit(1)
 	}
 
