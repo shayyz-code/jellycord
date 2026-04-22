@@ -24,8 +24,8 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	// Load .env file if it exists
-	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+	// Load .env file if it exists, allowing it to override existing env vars in dev
+	if err := godotenv.Overload(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Warn("error loading .env file", "error", err)
 	}
 

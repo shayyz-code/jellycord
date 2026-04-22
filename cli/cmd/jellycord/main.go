@@ -44,8 +44,8 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Load .env file if it exists
-	_ = godotenv.Load()
+	// Load .env file if it exists, allowing it to override existing env vars in dev
+	_ = godotenv.Overload()
 
 	cfg, err := config.Load()
 	if err != nil {

@@ -83,11 +83,7 @@ go-build: go-tidy
 
 server-run: dev-up
 	@echo "$(BLUE)running server on $(SERVER_ADDR)...$(RESET)"
-	@JELLYCORD_ADDR="$(SERVER_ADDR)" \
-	 JELLYCORD_REDIS_URL="redis://127.0.0.1:6379/0" \
-	 JELLYCORD_JWT_SECRET="dev-insecure-secret-change-me" \
-	 JELLYCORD_ADMIN_KEY="dev-admin-key-change-me" \
-	 go run $(SERVER_MAIN)
+	@go run $(SERVER_MAIN)
 
 cli-run:
 	@go run $(CLI_MAIN) help
