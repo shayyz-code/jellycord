@@ -1,4 +1,4 @@
-.PHONY: help go-fmt go-tidy go-test go-test-watch go-build server-run cli-run docker-build docker-up docker-down docker-logs dev-up dev-down lint test-unit test-integration coverage
+.PHONY: help go-fmt go-tidy go-test go-test-watch go-build server-run cli-run docker-build docker-up docker-down docker-logs dev-up dev-down lint test-unit test-integration coverage deploy
 
 ## Colors
 BLUE   := \033[34m
@@ -36,6 +36,7 @@ help:
 	@printf "  $(CYAN)make docker-up$(RESET)      - start server+redis via docker compose\n"
 	@printf "  $(CYAN)make docker-logs$(RESET)    - tail compose logs\n"
 	@printf "  $(CYAN)make docker-down$(RESET)    - stop compose stack\n"
+	@printf "  $(CYAN)make deploy$(RESET)         - push code and deploy to VPS\n"
 	@printf "\n"
 	@printf "Notes:\n"
 	@printf "  - SERVER_ADDR defaults to %s\n" "$(SERVER_ADDR)"
@@ -111,4 +112,8 @@ dev-up:
 dev-down:
 	@docker compose rm -sf redis >/dev/null 2>&1 || true
 	@echo "$(YELLOW)Redis (dev) stopped.$(RESET)"
+
+deploy:
+	@echo "$(BLUE)starting deployment to VPS...$(RESET)"
+	@./scripts/push-deploy.sh
 
