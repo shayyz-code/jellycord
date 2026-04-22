@@ -19,6 +19,8 @@ JellyCord is a small social app crafted to help you stay connected with friends 
 
 ```
 .
+├─ server/               # Go chat server (rooms/chat/JWT, Docker)
+├─ cli/                  # Go CLI chat client
 ├─ web/                  # Next.js 16 app (React 19, Tailwind v4)
 │  ├─ app/               # App Router pages, API routes, middleware
 │  ├─ components/        # UI components (Radix UI, shadcn-style), utilities
