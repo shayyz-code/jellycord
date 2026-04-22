@@ -149,6 +149,40 @@ cd web
 PORT=3001 npm run dev
 ```
 
+### 5) Go Chat Server + CLI
+
+Build both binaries:
+
+```bash
+make go-build
+```
+
+Run server locally (starts Redis dev dependency if needed):
+
+```bash
+make server-run
+```
+
+Use the CLI:
+
+```bash
+./jellycord
+```
+
+Default CLI behavior:
+
+- Running `jellycord` starts chat immediately.
+- If no token is saved yet, it interactively asks for username/password and logs in.
+- Token is saved to your local config and reused on next run.
+
+Useful commands:
+
+```bash
+./jellycord login
+./jellycord whoami
+./jellycord admin create-user
+```
+
 ## Notable Endpoints and Files
 
 - API routes (web):
@@ -198,6 +232,9 @@ PORT=3001 npm run dev
 - **Secrets**: copy `.env.secrets.example` to `.env.secrets` and set:
   - `JELLYCORD_JWT_SECRET`
   - `JELLYCORD_ADMIN_KEY`
+  - Optional bootstrap admin:
+    - `JELLYCORD_BOOTSTRAP_ADMIN_USERNAME`
+    - `JELLYCORD_BOOTSTRAP_ADMIN_PASSWORD`
 
 Run on VPS:
 
@@ -210,6 +247,17 @@ cp .env.secrets.example .env.secrets
 nano .env.secrets
 docker compose --env-file .env.deploy -f docker-compose.prod.yml --env-file .env.secrets up -d --build
 ```
+
+Create users easily as admin:
+
+```bash
+./jellycord admin create-user --server http://127.0.0.1:${JELLYCORD_HOST_PORT:-8080}
+```
+
+This works with either:
+
+- `--admin-key` (or `JELLYCORD_ADMIN_KEY` env var), or
+- a logged-in admin token from `./jellycord login`
 
 ## License
 

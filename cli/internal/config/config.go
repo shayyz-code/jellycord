@@ -8,7 +8,9 @@ import (
 )
 
 type Config struct {
-	Token string `json:"token"`
+	Token     string `json:"token"`
+	ServerURL string `json:"server_url"`
+	Username  string `json:"username"`
 }
 
 func Load() (Config, error) {
@@ -52,4 +54,3 @@ func path() (string, error) {
 	}
 	return filepath.Join(dir, "jellycord", "config.json"), nil
 }
-

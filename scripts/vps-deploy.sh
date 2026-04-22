@@ -96,7 +96,7 @@ main() {
   echo "  cd $APP_DIR"
   echo "  cp .env.deploy.example .env.deploy"
   echo "  nano .env.deploy    # set JELLYCORD_VPS_IP + host port/bind"
-  echo "  cp .env.example .env.secrets"
+  echo "  cp .env.secrets.example .env.secrets"
   echo "  nano .env.secrets   # set JELLYCORD_JWT_SECRET + JELLYCORD_ADMIN_KEY"
   echo "  docker compose --env-file .env.deploy -f docker-compose.prod.yml --env-file .env.secrets up -d --build"
   echo
@@ -111,4 +111,3 @@ main() {
 }
 
 main "$@"
-

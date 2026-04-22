@@ -44,7 +44,7 @@ func (s *Server) Mux() *http.ServeMux {
 
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 	mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
-	mux.HandleFunc("POST /admin/users", s.requireAdminKey(s.handleAdminCreateUser))
+	mux.HandleFunc("POST /admin/users", s.requireAdmin(s.handleAdminCreateUser))
 	mux.HandleFunc("GET /ws", s.requireAuth(s.handleWS))
 
 	return mux
@@ -180,14 +180,25 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"user": map[string]any{"username": u.Username, "role": u.Role}})
 }
 
-func (s *Server) requireAdminKey(next http.HandlerFunc) http.HandlerFunc {
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("X-Admin-Key")
-		if key == "" || key != s.cfg.AdminKey {
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "admin key required"})
+		if key != "" && key == s.cfg.AdminKey {
+			next(w, r)
 			return
 		}
-		next(w, r)
+
+		tok, ok := bearerToken(r.Header.Get("Authorization"))
+		if ok {
+			claims, err := s.jwt.Parse(tok)
+			if err == nil && claims.Role == "admin" {
+				next(w, r)
+				return
+			}
+		}
+
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "admin access required"})
+		return
 	}
 }
 
@@ -254,4 +265,3 @@ func wsWriteJSON(ctx context.Context, c *websocket.Conn, v any) error {
 	}
 	return c.Write(ctx, websocket.MessageText, b)
 }
-
