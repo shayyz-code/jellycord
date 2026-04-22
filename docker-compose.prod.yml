@@ -15,6 +15,14 @@ services:
     #   docker compose --env-file .env.deploy -f docker-compose.prod.yml --env-file .env.secrets up -d --build
     depends_on:
       - redis
+    environment:
+      JELLYCORD_ENV: production
+      JELLYCORD_ADDR: ":8080"
+      JELLYCORD_REDIS_URL: "redis://redis:6379/0"
+      JELLYCORD_JWT_SECRET: "${JELLYCORD_JWT_SECRET:?set in .env.secrets}"
+      JELLYCORD_ADMIN_KEY: "${JELLYCORD_ADMIN_KEY:?set in .env.secrets}"
+      JELLYCORD_BOOTSTRAP_ADMIN_USERNAME: "${JELLYCORD_BOOTSTRAP_ADMIN_USERNAME:-}"
+      JELLYCORD_BOOTSTRAP_ADMIN_PASSWORD: "${JELLYCORD_BOOTSTRAP_ADMIN_PASSWORD:-}"
     ports:
       # Configure via `.env.deploy` (host bind ip + host port)
       # Put Caddy/Nginx in front for TLS.
@@ -22,4 +30,3 @@ services:
 
 volumes:
   redis-data:
-

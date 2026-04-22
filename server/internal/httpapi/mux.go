@@ -1,11 +1,17 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net"
 	"net/http"
+	"runtime/debug"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"nhooyr.io/websocket"
@@ -27,6 +33,7 @@ type Server struct {
 	store *store.Store
 	jwt   *auth.JWT
 	hub   *chat.Hub
+	reqID atomic.Uint64
 }
 
 func New(cfg config.Config, st *store.Store, j *auth.JWT) *Server {
@@ -41,6 +48,12 @@ func (s *Server) Mux() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
+	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
 
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 	mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
@@ -48,6 +61,114 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /ws", s.requireAuth(s.handleWS))
 
 	return mux
+}
+
+func (s *Server) Handler() http.Handler {
+	return s.withMiddleware(s.Mux())
+}
+
+func (s *Server) withMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// WebSocket requests should not be handled by CORS middleware if they are GET /ws
+		// because the websocket.Accept handles origin checks.
+		// However, we still want headers for normal REST requests.
+		isWS := strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+		if !isWS {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+
+		id := s.nextRequestID()
+		start := time.Now()
+		rw := newStatusWriter(w)
+		rw.Header().Set("X-Request-Id", id)
+
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("request panic",
+					"request_id", id,
+					"method", r.Method,
+					"path", r.URL.Path,
+					"error", rec,
+					"stack", string(debug.Stack()),
+				)
+				writeJSON(rw, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			}
+			slog.Info("request completed",
+				"request_id", id,
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", rw.Status(),
+				"duration_ms", time.Since(start).Milliseconds(),
+				"ip", clientIP(r),
+			)
+		}()
+
+		next.ServeHTTP(rw, r)
+	})
+}
+
+func (s *Server) nextRequestID() string {
+	n := s.reqID.Add(1)
+	return strconv.FormatUint(n, 10)
+}
+
+func clientIP(r *http.Request) string {
+	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xrip := strings.TrimSpace(r.Header.Get("X-Real-Ip")); xrip != "" {
+		return xrip
+	}
+	return r.RemoteAddr
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func newStatusWriter(w http.ResponseWriter) *statusWriter {
+	return &statusWriter{ResponseWriter: w, status: http.StatusOK}
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Status() int {
+	return w.status
+}
+
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, errors.New("hijacker not supported")
+}
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.store.Ping(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "not_ready", "error": "redis unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ready"})
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -65,8 +186,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
+		InsecureSkipVerify: true, // For development, let it work with any origin
 	})
 	if err != nil {
+		slog.Error("websocket accept failed", "error", err)
 		return
 	}
 	defer c.Close(websocket.StatusNormalClosure, "")

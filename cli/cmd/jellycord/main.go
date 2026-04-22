@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/term"
 	"nhooyr.io/websocket"
 
+	"github.com/joho/godotenv"
 	"github.com/shayyz-code/jellycord/cli/internal/client"
 	"github.com/shayyz-code/jellycord/cli/internal/config"
 )
@@ -22,28 +24,39 @@ import (
 const (
 	defaultServerURL = "http://127.0.0.1:8080"
 	defaultRoom      = "general"
+
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorPurple = "\033[35m"
+	colorCyan   = "\033[36m"
+	colorWhite  = "\033[37m"
+	colorBold   = "\033[1m"
 )
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Load .env file if it exists
+	_ = godotenv.Load()
+
 	cfg, err := config.Load()
 	if err != nil {
 		fatalf("failed to load config: %v", err)
 	}
-	if strings.TrimSpace(cfg.ServerURL) == "" {
-		cfg.ServerURL = defaultServerURL
-	}
-
 	args := os.Args[1:]
 	if len(args) == 0 {
+		printBanner()
 		runChat(ctx, cfg, nil)
 		return
 	}
 
 	switch args[0] {
 	case "help", "-h", "--help":
+		printBanner()
 		printHelp()
 	case "login":
 		runLogin(ctx, cfg, args[1:])
@@ -56,48 +69,62 @@ func main() {
 	case "whoami":
 		runWhoAmI(ctx, cfg, args[1:])
 	default:
-		// Smooth UX: any unknown invocation falls back to default chat flow.
-		runChat(ctx, cfg, nil)
+		fmt.Printf("%sUnknown command: %s%s\n\n", colorRed, args[0], colorReset)
+		printHelp()
 	}
 }
 
+func printBanner() {
+	banner := `
+       _      _ _        _____              _ 
+      | |    | | |      / ____|            | |
+      | | ___| | |_   _| |     ___  _ __ __| |
+  _   | |/ _ \ | | | | | |    / _ \| '__/ _` + "`" + ` |
+ | |__| |  __/ | | |_| | |___| (_) | | | (_| |
+  \____/ \___|_|_|\__, |\_____\___/|_|  \__,_|
+                   __/ |                      
+                  |___/                       
+`
+	fmt.Printf("%s%s%s\n", colorCyan, banner, colorReset)
+}
+
 func printHelp() {
-	fmt.Println("Jellycord CLI")
-	fmt.Println()
+	fmt.Printf("%sJellycord CLI - Production Grade Chat%s\n\n", colorBold, colorReset)
 	fmt.Println("Usage:")
-	fmt.Println("  jellycord                     # start chat (interactive login if needed)")
-	fmt.Println("  jellycord chat [--room ROOM] [--server URL]")
-	fmt.Println("  jellycord login [--username U] [--password P] [--server URL]")
-	fmt.Println("  jellycord logout")
-	fmt.Println("  jellycord whoami [--server URL]")
-	fmt.Println("  jellycord admin create-user [--username U] [--password P] [--role user|admin] [--server URL] [--admin-key KEY]")
+	fmt.Printf("  %sjellycord%s                     # start chat (interactive login if needed)\n", colorGreen, colorReset)
+	fmt.Printf("  %sjellycord chat%s [--room ROOM] [--server URL]\n", colorGreen, colorReset)
+	fmt.Printf("  %sjellycord login%s [--username U] [--password P] [--server URL]\n", colorGreen, colorReset)
+	fmt.Printf("  %sjellycord logout%s\n", colorGreen, colorReset)
+	fmt.Printf("  %sjellycord whoami%s [--server URL]\n", colorGreen, colorReset)
+	fmt.Printf("  %sjellycord admin create-user%s [--username U] [--password P] [--role user|admin] [--server URL] [--admin-key KEY]\n", colorGreen, colorReset)
+	fmt.Println()
 }
 
 func runLogin(ctx context.Context, cfg config.Config, args []string) {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
-	server := fs.String("server", cfg.ServerURL, "server base URL")
+	server := fs.String("server", "", "server base URL")
 	username := fs.String("username", "", "username")
 	password := fs.String("password", "", "password")
 	_ = fs.Parse(args)
 
-	u := strings.TrimSpace(*username)
-	p := strings.TrimSpace(*password)
-	if u == "" {
-		u = promptLine("Username: ")
-	}
-	if p == "" {
-		p = promptPassword("Password: ")
+	serverURL, err := effectiveServerURL(cfg, *server)
+	if err != nil {
+		fatalf("invalid server URL: %v", err)
 	}
 
-	loginCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	out, err := client.Login(loginCtx, *server, u, p)
+	u := strings.TrimSpace(*username)
+	p := strings.TrimSpace(*password)
+	if u == "" || p == "" {
+		fmt.Printf("%s--- Login to %s ---%s\n", colorCyan, serverURL, colorReset)
+		u, p = promptCredentials(u, p)
+	}
+	out, err := performLogin(ctx, serverURL, u, p)
 	if err != nil {
 		fatalf("login failed: %v", err)
 	}
 
 	cfg.Token = out.Token
-	cfg.ServerURL = strings.TrimRight(*server, "/")
+	cfg.ServerURL = serverURL
 	cfg.Username = u
 	if out.User.Username != "" {
 		cfg.Username = out.User.Username
@@ -105,7 +132,7 @@ func runLogin(ctx context.Context, cfg config.Config, args []string) {
 	if err := config.Save(cfg); err != nil {
 		fatalf("failed saving config: %v", err)
 	}
-	fmt.Printf("Logged in as %s\n", cfg.Username)
+	fmt.Printf("%sLogged in as %s%s%s\n", colorGreen, colorBold, cfg.Username, colorReset)
 }
 
 func runLogout(cfg config.Config) {
@@ -114,25 +141,32 @@ func runLogout(cfg config.Config) {
 	if err := config.Save(cfg); err != nil {
 		fatalf("failed saving config: %v", err)
 	}
-	fmt.Println("Logged out.")
+	fmt.Printf("%sLogged out successfully.%s\n", colorYellow, colorReset)
 }
 
 func runWhoAmI(ctx context.Context, cfg config.Config, args []string) {
 	fs := flag.NewFlagSet("whoami", flag.ExitOnError)
-	server := fs.String("server", cfg.ServerURL, "server base URL")
+	server := fs.String("server", "", "server base URL")
 	_ = fs.Parse(args)
 
 	if strings.TrimSpace(cfg.Token) == "" {
 		fatalf("not logged in. Run: jellycord login")
 	}
 
+	serverURL, err := effectiveServerURL(cfg, *server)
+	if err != nil {
+		fatalf("invalid server URL: %v", err)
+	}
+
 	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	me, err := client.Me(callCtx, *server, cfg.Token)
+	me, err := client.Me(callCtx, serverURL, cfg.Token)
 	if err != nil {
 		fatalf("%v", err)
 	}
-	fmt.Printf("%s (%s)\n", me.Username, me.Role)
+	fmt.Printf("%sUser:%s %s\n", colorCyan, colorReset, me.Username)
+	fmt.Printf("%sRole:%s %s\n", colorCyan, colorReset, me.Role)
+	fmt.Printf("%sServer:%s %s\n", colorCyan, colorReset, serverURL)
 }
 
 func runAdmin(ctx context.Context, cfg config.Config, args []string) {
@@ -141,12 +175,17 @@ func runAdmin(ctx context.Context, cfg config.Config, args []string) {
 	}
 
 	fs := flag.NewFlagSet("admin create-user", flag.ExitOnError)
-	server := fs.String("server", cfg.ServerURL, "server base URL")
+	server := fs.String("server", "", "server base URL")
 	adminKey := fs.String("admin-key", "", "admin key (or set JELLYCORD_ADMIN_KEY)")
 	username := fs.String("username", "", "new username")
 	password := fs.String("password", "", "new password")
 	role := fs.String("role", "user", "user role: user|admin")
 	_ = fs.Parse(args[1:])
+
+	serverURL, err := effectiveServerURL(cfg, *server)
+	if err != nil {
+		fatalf("invalid server URL: %v", err)
+	}
 
 	key := strings.TrimSpace(*adminKey)
 	if key == "" {
@@ -168,13 +207,16 @@ func runAdmin(ctx context.Context, cfg config.Config, args []string) {
 	if p == "" {
 		p = promptPassword("New password: ")
 	}
+	if len(p) < 8 {
+		fatalf("new password must be at least 8 characters")
+	}
 	if r == "" {
 		r = "user"
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	out, err := client.AdminCreateUser(callCtx, *server, key, adminToken, u, p, r)
+	out, err := client.AdminCreateUser(callCtx, serverURL, key, adminToken, u, p, r)
 	if err != nil {
 		fatalf("%v", err)
 	}
@@ -183,28 +225,39 @@ func runAdmin(ctx context.Context, cfg config.Config, args []string) {
 
 func runChat(ctx context.Context, cfg config.Config, args []string) {
 	fs := flag.NewFlagSet("chat", flag.ExitOnError)
-	server := fs.String("server", cfg.ServerURL, "server base URL")
-	room := fs.String("room", defaultRoom, "chat room")
+	server := fs.String("server", "", "server base URL")
+	room := fs.String("room", "", "chat room")
 	_ = fs.Parse(args)
 
-	serverURL := strings.TrimSpace(*server)
-	if serverURL == "" {
-		serverURL = defaultServerURL
+	serverURL, err := effectiveServerURL(cfg, *server)
+	if err != nil {
+		fatalf("invalid server URL: %v", err)
 	}
 	roomName := strings.TrimSpace(*room)
+	if roomName == "" {
+		roomName = strings.TrimSpace(cfg.LastRoom)
+	}
 	if roomName == "" {
 		roomName = defaultRoom
 	}
 
 	token := strings.TrimSpace(cfg.Token)
-	if token == "" {
-		fmt.Println("No saved login found. Please log in.")
-		u := promptLine("Username: ")
-		p := promptPassword("Password: ")
-
-		loginCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		out, err := client.Login(loginCtx, serverURL, u, p)
+	if token != "" {
+		checkCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		_, err := client.Me(checkCtx, serverURL, token)
 		cancel()
+		if err != nil && errors.Is(err, client.ErrUnauthorized) {
+			fmt.Printf("%sSaved session expired. Please log in again.%s\n", colorYellow, colorReset)
+			cfg.Token = ""
+			cfg.Username = ""
+			token = ""
+		}
+	}
+
+	if token == "" {
+		fmt.Printf("%sNo saved login found. Please log in.%s\n", colorYellow, colorReset)
+		u, p := promptCredentials("", "")
+		out, err := performLogin(ctx, serverURL, u, p)
 		if err != nil {
 			fatalf("login failed: %v", err)
 		}
@@ -219,7 +272,12 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 			fatalf("failed saving config: %v", err)
 		}
 		token = out.Token
-		fmt.Printf("Logged in as %s\n", cfg.Username)
+		fmt.Printf("%sLogged in as %s%s%s\n", colorGreen, colorBold, cfg.Username, colorReset)
+	}
+
+	cfg.LastRoom = roomName
+	if err := config.Save(cfg); err != nil {
+		fatalf("failed saving config: %v", err)
 	}
 
 	connCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -230,8 +288,8 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 	}
 	defer cc.Close(websocket.StatusNormalClosure, "bye")
 
-	fmt.Printf("Connected to %s (room: %s)\n", serverURL, roomName)
-	fmt.Println("Type and press Enter to send. Ctrl+C to quit.")
+	fmt.Printf("%sConnected to %s (room: %s)%s\n", colorGreen, serverURL, roomName, colorReset)
+	fmt.Printf("%sType and press Enter to send. Ctrl+C to quit.%s\n\n", colorCyan, colorReset)
 
 	errCh := make(chan error, 2)
 
@@ -242,7 +300,7 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 				errCh <- err
 				return
 			}
-			fmt.Printf("[%s] %s\n", m.From, m.Text)
+			fmt.Printf("%s[%s]%s %s\n", colorPurple, m.From, colorReset, m.Text)
 		}
 	}()
 
@@ -265,29 +323,75 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 	case <-ctx.Done():
 	case err := <-errCh:
 		if !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "chat ended: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%schat ended: %v%s\n", colorRed, err, colorReset)
 		}
 	}
 }
 
 func promptLine(label string) string {
-	fmt.Fprint(os.Stdout, label)
+	fmt.Printf("%s%s%s", colorBold, label, colorReset)
 	reader := bufio.NewReader(os.Stdin)
 	v, _ := reader.ReadString('\n')
 	return strings.TrimSpace(v)
 }
 
 func promptPassword(label string) string {
-	fmt.Fprint(os.Stdout, label)
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return promptLine(label)
+	}
+	fmt.Printf("%s%s%s", colorBold, label, colorReset)
 	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(os.Stdout)
 	if err != nil {
-		return ""
+		return promptLine(label)
 	}
 	return strings.TrimSpace(string(b))
 }
 
+func promptCredentials(username, password string) (string, string) {
+	u := strings.TrimSpace(username)
+	p := strings.TrimSpace(password)
+	if u == "" {
+		u = promptLine("Username: ")
+	}
+	if p == "" {
+		p = promptPassword("Password: ")
+	}
+	return u, p
+}
+
+func performLogin(ctx context.Context, serverURL, username, password string) (client.LoginResponse, error) {
+	loginCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return client.Login(loginCtx, serverURL, username, password)
+}
+
+func effectiveServerURL(cfg config.Config, fromFlag string) (string, error) {
+	raw := strings.TrimSpace(fromFlag)
+	if raw == "" {
+		raw = strings.TrimSpace(os.Getenv("JELLYCORD_SERVER_URL"))
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(cfg.ServerURL)
+	}
+	if raw == "" {
+		raw = defaultServerURL
+	}
+	raw = strings.TrimRight(raw, "/")
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("server must be http(s), got %q", raw)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("server host is required")
+	}
+	return raw, nil
+}
+
 func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	fmt.Fprintf(os.Stderr, colorRed+format+colorReset+"\n", args...)
 	os.Exit(1)
 }

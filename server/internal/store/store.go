@@ -28,6 +28,10 @@ func New(rdb *redis.Client) *Store {
 	return &Store{rdb: rdb}
 }
 
+func (s *Store) Ping(ctx context.Context) error {
+	return s.rdb.Ping(ctx).Err()
+}
+
 func (s *Store) CreateUser(ctx context.Context, username, password, role string) error {
 	username = normalizeUsername(username)
 	if username == "" || password == "" {
@@ -128,4 +132,3 @@ func normalizeUsername(u string) string {
 	u = strings.ToLower(u)
 	return u
 }
-

@@ -11,6 +11,7 @@ type Config struct {
 	Token     string `json:"token"`
 	ServerURL string `json:"server_url"`
 	Username  string `json:"username"`
+	LastRoom  string `json:"last_room"`
 }
 
 func Load() (Config, error) {

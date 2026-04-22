@@ -12,6 +12,7 @@ import (
 )
 
 var ErrLoginFailed = errors.New("login failed")
+var ErrUnauthorized = errors.New("unauthorized")
 
 type LoginResponse struct {
 	Token string `json:"token"`
@@ -67,6 +68,9 @@ func Login(ctx context.Context, serverBaseURL, username, password string) (Login
 		}
 		return okResp, nil
 	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return LoginResponse{}, fmt.Errorf("%w: invalid credentials", ErrUnauthorized)
+	}
 
 	// Best-effort parse the server error shape: {"error":"..."}
 	var errResp struct {
@@ -97,6 +101,9 @@ func Me(ctx context.Context, serverBaseURL, token string) (MeResponse, error) {
 		return MeResponse{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return MeResponse{}, fmt.Errorf("%w: token invalid or expired", ErrUnauthorized)
+		}
 		return MeResponse{}, fmt.Errorf("me failed: http %d", resp.StatusCode)
 	}
 	var out MeResponse
@@ -140,6 +147,9 @@ func AdminCreateUser(ctx context.Context, serverBaseURL, adminKey, adminToken, u
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return CreateUserResponse{}, fmt.Errorf("%w: admin access required", ErrUnauthorized)
+		}
 		var errResp struct {
 			Error string `json:"error"`
 		}

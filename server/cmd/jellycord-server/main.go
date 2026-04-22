@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/shayyz-code/jellycord/server/internal/auth"
@@ -19,11 +20,25 @@ import (
 )
 
 func main() {
+	// Setup structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	// Load .env file if it exists
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Warn("error loading .env file", "error", err)
+	}
+
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid config", "error", err)
+		os.Exit(1)
+	}
 
 	rdbOpts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("invalid JELLYCORD_REDIS_URL: %v", err)
+		slog.Error("invalid JELLYCORD_REDIS_URL", "error", err)
+		os.Exit(1)
 	}
 	rdb := redis.NewClient(rdbOpts)
 	defer rdb.Close()
@@ -31,31 +46,36 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("redis ping failed: %v", err)
+		slog.Error("redis ping failed", "error", err)
+		os.Exit(1)
 	}
 
 	st := store.New(rdb)
 	if err := bootstrapAdmin(ctx, st); err != nil {
-		log.Fatalf("bootstrap admin failed: %v", err)
+		slog.Error("bootstrap admin failed", "error", err)
+		os.Exit(1)
 	}
 
 	j, err := auth.NewJWT(cfg.JWTSecret)
 	if err != nil {
-		log.Fatalf("jwt init failed: %v", err)
+		slog.Error("jwt init failed", "error", err)
+		os.Exit(1)
 	}
 
 	srv := &http.Server{
-		Addr:         cfg.Addr,
-		Handler:      httpapi.New(cfg, st, j).Mux(),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.Addr,
+		Handler:           httpapi.New(cfg, st, j).Handler(),
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
-		log.Printf("jellycord-server listening on %s", cfg.Addr)
+		slog.Info("jellycord-server listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server failed: %v", err)
+			slog.Error("server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -70,11 +90,11 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 	}
 	err := st.CreateUser(ctx, username, password, "admin")
 	if err == nil {
-		log.Printf("bootstrap admin created: %s", username)
+		slog.Info("bootstrap admin created", "username", username)
 		return nil
 	}
 	if errors.Is(err, store.ErrUserExists) {
-		log.Printf("bootstrap admin already exists: %s", username)
+		slog.Info("bootstrap admin already exists", "username", username)
 		return nil
 	}
 	return err
@@ -85,9 +105,11 @@ func waitForShutdown(srv *http.Server) {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
+	slog.Info("shutting down server...")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "error", err)
 	}
 }
