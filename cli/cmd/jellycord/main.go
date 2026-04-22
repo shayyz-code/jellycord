@@ -13,10 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/joho/godotenv"
 	"golang.org/x/term"
 	"nhooyr.io/websocket"
 
-	"github.com/joho/godotenv"
 	"github.com/shayyz-code/jellycord/cli/internal/client"
 	"github.com/shayyz-code/jellycord/cli/internal/config"
 )
@@ -288,44 +292,151 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 	}
 	defer cc.Close(websocket.StatusNormalClosure, "bye")
 
-	fmt.Printf("%sConnected to %s (room: %s)%s\n", colorGreen, serverURL, roomName, colorReset)
-	fmt.Printf("%sType and press Enter to send. Ctrl+C to quit.%s\n\n", colorCyan, colorReset)
+	p := tea.NewProgram(initialModel(cc, roomName, cfg.Username))
 
-	errCh := make(chan error, 2)
-
+	// WebSocket reader
 	go func() {
 		for {
 			m, err := cc.ReadMessage(ctx)
 			if err != nil {
-				errCh <- err
+				p.Send(errMsg{err})
 				return
 			}
-			fmt.Printf("%s[%s]%s %s\n", colorPurple, m.From, colorReset, m.Text)
+			p.Send(chatMsg(m))
 		}
 	}()
 
-	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			if err := cc.SendText(ctx, scanner.Text()); err != nil {
-				errCh <- err
-				return
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- errors.New("input closed")
-	}()
-
-	select {
-	case <-ctx.Done():
-	case err := <-errCh:
-		if !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "%schat ended: %v%s\n", colorRed, err, colorReset)
-		}
+	if _, err := p.Run(); err != nil {
+		fatalf("TUI error: %v", err)
 	}
+}
+
+type chatMsg client.Message
+type errMsg struct{ err error }
+
+type model struct {
+	cc        *client.ChatConn
+	room      string
+	username  string
+	viewport  viewport.Model
+	textinput textinput.Model
+	messages  []string
+	err       error
+}
+
+func initialModel(cc *client.ChatConn, room, username string) model {
+	ti := textinput.New()
+	ti.Placeholder = "Type a message... (/commands for help)"
+	ti.Focus()
+	ti.CharLimit = 256
+	ti.Width = 80
+
+	return model{
+		cc:        cc,
+		room:      room,
+		username:  username,
+		textinput: ti,
+		messages:  []string{fmt.Sprintf("Connected to #%s as %s", room, username)},
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		tiCmd tea.Cmd
+		vpCmd tea.Cmd
+	)
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		headerHeight := 3
+		footerHeight := 3
+		m.viewport = viewport.New(msg.Width, msg.Height-headerHeight-footerHeight)
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.textinput.Width = msg.Width - 5
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			return m, tea.Quit
+
+		case tea.KeyEnter:
+			val := strings.TrimSpace(m.textinput.Value())
+			if val == "" {
+				return m, nil
+			}
+
+			if strings.HasPrefix(val, "/") {
+				return m.handleCommand(val)
+			}
+
+			// Send message
+			err := m.cc.SendText(context.Background(), val)
+			if err != nil {
+				m.err = err
+			}
+			m.textinput.Reset()
+			return m, nil
+		}
+
+	case chatMsg:
+		m.messages = append(m.messages, fmt.Sprintf("[%s] %s", msg.From, msg.Text))
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
+		return m, nil
+
+	case errMsg:
+		m.err = msg.err
+		return m, tea.Quit
+	}
+
+	m.textinput, tiCmd = m.textinput.Update(msg)
+	m.viewport, vpCmd = m.viewport.Update(msg)
+	return m, tea.Batch(tiCmd, vpCmd)
+}
+
+func (m model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
+	parts := strings.Fields(cmd)
+	switch parts[0] {
+	case "/commands", "/help":
+		m.messages = append(m.messages, "\n--- Available Commands ---")
+		m.messages = append(m.messages, "/commands, /help - Show this help")
+		m.messages = append(m.messages, "/clear           - Clear message history")
+		m.messages = append(m.messages, "/exit, /quit     - Leave chat")
+		m.messages = append(m.messages, "/whoami          - Show current user info")
+		m.messages = append(m.messages, "---------------------------\n")
+	case "/clear":
+		m.messages = []string{fmt.Sprintf("Connected to #%s as %s", m.room, m.username)}
+	case "/exit", "/quit":
+		return m, tea.Quit
+	case "/whoami":
+		m.messages = append(m.messages, fmt.Sprintf("You are %s in #%s", m.username, m.room))
+	default:
+		m.messages = append(m.messages, fmt.Sprintf("Unknown command: %s", parts[0]))
+	}
+	m.viewport.SetContent(strings.Join(m.messages, "\n"))
+	m.viewport.GotoBottom()
+	m.textinput.Reset()
+	return m, nil
+}
+
+func (m model) View() string {
+	header := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("36")).
+		Render(fmt.Sprintf(" Jellycord - #%s ", m.room))
+
+	footer := fmt.Sprintf("\n %s", m.textinput.View())
+
+	if m.err != nil {
+		footer += lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(fmt.Sprintf("\n Error: %v", m.err))
+	}
+
+	return header + "\n" + m.viewport.View() + footer
 }
 
 func promptLine(label string) string {
