@@ -1,7 +1,7 @@
 {
   "name": "jellycord-web",
   "description": "Jellycord is crafted for u to stay connected, and have fun with friends while coding, biking or just doing whatever u want!",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "scripts": {
@@ -68,6 +68,7 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "baseline-browser-mapping": "^2.10.21",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
