@@ -24,7 +24,8 @@ import (
 	"github.com/shayyz-code/jellycord/cli/internal/client"
 	"github.com/shayyz-code/jellycord/cli/internal/config"
 	"github.com/shayyz-code/jellycord/cli/internal/emoji"
-	)
+)
+
 const (
 	defaultServerURL = "https://api.jellycord.com"
 	defaultRoom      = "general"
@@ -46,6 +47,11 @@ var (
 	userStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("35")).Bold(true).Render
 	infoStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("36")).Render
 	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render
+
+	// Fixed width styles
+	unreadStyle         = lipgloss.NewStyle().Width(2)
+	usernameColumnStyle = lipgloss.NewStyle().Width(15).PaddingRight(1)
+	timeColumnStyle     = lipgloss.NewStyle().Width(8).PaddingRight(1)
 )
 
 func formatMessageTime(sentAtMs int64) string {
@@ -58,14 +64,21 @@ func formatMessageTime(sentAtMs int64) string {
 }
 
 func formatMessage(msg client.Message, isUnread bool) string {
-        ts := formatMessageTime(msg.SentAtMs)
-        unreadMarker := "  "
-        if isUnread {
-                unreadMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("• ")
-        }
-        text := emoji.Replace(msg.Text)
-        return fmt.Sprintf("%s%s\t%s\t%s", unreadMarker, userStyle(msg.From), timeStyle(ts), msgStyle(text))
+	ts := formatMessageTime(msg.SentAtMs)
+	unreadStr := "  "
+	if isUnread {
+		unreadStr = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("• ")
+	}
+
+	text := emoji.Replace(msg.Text)
+
+	unread := unreadStyle.Render(unreadStr)
+	user := usernameColumnStyle.Render(userStyle(msg.From))
+	timeStr := timeColumnStyle.Render(timeStyle(ts))
+
+	return fmt.Sprintf("%s%s%s%s", unread, user, timeStr, msgStyle(text))
 }
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -322,19 +335,7 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 	historyMessages, _ := client.FetchHistory(historyCtx, serverURL, roomName, token)
 	histCancel()
 
-	p := tea.NewProgram(initialModelWithHistory(cc, roomName, cfg.Username, historyMessages))
-
-	// WebSocket reader
-	go func() {
-		for {
-			m, err := cc.ReadMessage(ctx)
-			if err != nil {
-				p.Send(errMsg{err})
-				return
-			}
-			p.Send(chatMsg(m))
-		}
-	}()
+	p := tea.NewProgram(initialModelWithHistory(cc, serverURL, token, roomName, cfg.Username, historyMessages))
 
 	// Heartbeat to keep connection alive
 	go func() {
@@ -359,40 +360,53 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 
 type chatMsg client.Message
 type errMsg struct{ err error }
+type listRoomsMsg struct{ rooms []string }
+type switchRoomMsg struct {
+	room     string
+	cc       *client.ChatConn
+	username string
+	history  []client.Message
+}
 
 type model struct {
-	cc              *client.ChatConn
-	room            string
-	username        string
-	viewport        viewport.Model
-	textinput       textinput.Model
-	messages        []string
-	err             error
-	showCommands    bool
-	commandIndex    int
-	filteredCmds    []string
-	availableCmds   []string
-	commandDescs    map[string]string
+	cc            *client.ChatConn
+	serverURL     string
+	token         string
+	room          string
+	username      string
+	viewport      viewport.Model
+	textinput     textinput.Model
+	messages      []string
+	err           error
+	showCommands  bool
+	commandIndex  int
+	filteredCmds  []string
+	availableCmds []string
+	commandDescs  map[string]string
 
-	showEmojis      bool
-	emojiIndex      int
-	filteredEmojis  []string
-	}
-func initialModelWithHistory(cc *client.ChatConn, room, username string, history []client.Message) model {
+	showEmojis     bool
+	emojiIndex     int
+	filteredEmojis []string
+}
+
+func initialModelWithHistory(cc *client.ChatConn, serverURL, token, room, username string, history []client.Message) model {
 	ti := textinput.New()
 	ti.Placeholder = "Type a message... (/help for commands)"
 	ti.Focus()
 	ti.CharLimit = 256
 	ti.Width = 80
 
-	availableCmds := []string{"/help", "/clear", "/exit", "/quit", "/whoami", "/emojis"}
+	availableCmds := []string{"/help", "/clear", "/exit", "/quit", "/whoami", "/emojis", "/list", "/join", "/create"}
 	commandDescs := map[string]string{
-	        "/help":   "Show available commands",
-	        "/clear":  "Clear message history",
-	        "/exit":   "Leave chat",
-	        "/quit":   "Leave chat",
-	        "/whoami": "Show current user info",
-	        "/emojis": "Show emoji help",
+		"/help":   "Show available commands",
+		"/clear":  "Clear message history",
+		"/exit":   "Leave chat",
+		"/quit":   "Leave chat",
+		"/whoami": "Show current user info",
+		"/emojis": "Show emoji help",
+		"/list":   "List available rooms",
+		"/join":   "Join a room: /join <room>",
+		"/create": "Create a room: /create <room>",
 	}
 	messages := []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)}
 	if len(history) > 0 {
@@ -406,6 +420,8 @@ func initialModelWithHistory(cc *client.ChatConn, room, username string, history
 
 	return model{
 		cc:            cc,
+		serverURL:     serverURL,
+		token:         token,
 		room:          room,
 		username:      username,
 		textinput:     ti,
@@ -415,35 +431,8 @@ func initialModelWithHistory(cc *client.ChatConn, room, username string, history
 	}
 }
 
-func initialModel(cc *client.ChatConn, room, username string) model {
-	ti := textinput.New()
-	ti.Placeholder = "Type a message... (/help for commands)"
-	ti.Focus()
-	ti.CharLimit = 256
-	ti.Width = 80
-
-	availableCmds := []string{"/help", "/clear", "/exit", "/quit", "/whoami", "/emojis"}
-	commandDescs := map[string]string{
-	        "/help":   "Show available commands",
-	        "/clear":  "Clear message history",
-	        "/exit":   "Leave chat",
-	        "/quit":   "Leave chat",
-	        "/whoami": "Show current user info",
-	        "/emojis": "Show emoji help",
-	}
-	return model{
-		cc:            cc,
-		room:          room,
-		username:      username,
-		textinput:     ti,
-		messages:      []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)},
-		availableCmds: availableCmds,
-		commandDescs:  commandDescs,
-	}
-}
-
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, m.startReader())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -464,86 +453,122 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-	        if m.showCommands {
-	                switch msg.Type {
-	                case tea.KeyUp:
-	                        if m.commandIndex > 0 {
-	                                m.commandIndex--
-	                        }
-	                        return m, nil
-	                case tea.KeyDown:
-	                        if m.commandIndex < len(m.filteredCmds)-1 {
-	                                m.commandIndex++
-	                        }
-	                        return m, nil
-	                case tea.KeyTab, tea.KeyEnter:
-	                        if len(m.filteredCmds) > 0 {
-	                                m.textinput.SetValue(m.filteredCmds[m.commandIndex] + " ")
-	                                m.textinput.SetCursor(len(m.textinput.Value()))
-	                                m.showCommands = false
-	                                return m, nil
-	                        }
-	                case tea.KeyEsc:
-	                        m.showCommands = false
-	                        return m, nil
-	                }
-	        } else if m.showEmojis {
-	                switch msg.Type {
-	                case tea.KeyUp:
-	                        if m.emojiIndex > 0 {
-	                                m.emojiIndex--
-	                        }
-	                        return m, nil
-	                case tea.KeyDown:
-	                        if m.emojiIndex < len(m.filteredEmojis)-1 {
-	                                m.emojiIndex++
-	                        }
-	                        return m, nil
-	                case tea.KeyTab, tea.KeyEnter:
-	                        if len(m.filteredEmojis) > 0 {
-	                                val := m.textinput.Value()
-	                                lastColon := strings.LastIndex(val, ":")
-	                                if lastColon != -1 {
-	                                        newVal := val[:lastColon] + m.filteredEmojis[m.emojiIndex] + " "
-	                                        m.textinput.SetValue(newVal)
-	                                        m.textinput.SetCursor(len(m.textinput.Value()))
-	                                }
-	                                m.showEmojis = false
-	                                return m, nil
-	                        }
-	                case tea.KeyEsc:
-	                        m.showEmojis = false
-	                        return m, nil
-	                }
-	        }
+		if m.showCommands {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.commandIndex > 0 {
+					m.commandIndex--
+				}
+				return m, nil
+			case tea.KeyDown:
+				if m.commandIndex < len(m.filteredCmds)-1 {
+					m.commandIndex++
+				}
+				return m, nil
+			case tea.KeyTab, tea.KeyEnter:
+				if len(m.filteredCmds) > 0 {
+					m.textinput.SetValue(m.filteredCmds[m.commandIndex] + " ")
+					m.textinput.SetCursor(len(m.textinput.Value()))
+					m.showCommands = false
+					return m, nil
+				}
+			case tea.KeyEsc:
+				m.showCommands = false
+				return m, nil
+			}
+		} else if m.showEmojis {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.emojiIndex > 0 {
+					m.emojiIndex--
+				}
+				return m, nil
+			case tea.KeyDown:
+				if m.emojiIndex < len(m.filteredEmojis)-1 {
+					m.emojiIndex++
+				}
+				return m, nil
+			case tea.KeyTab, tea.KeyEnter:
+				if len(m.filteredEmojis) > 0 {
+					val := m.textinput.Value()
+					lastColon := strings.LastIndex(val, ":")
+					if lastColon != -1 {
+						newVal := val[:lastColon] + m.filteredEmojis[m.emojiIndex] + " "
+						m.textinput.SetValue(newVal)
+						m.textinput.SetCursor(len(m.textinput.Value()))
+					}
+					m.showEmojis = false
+					return m, nil
+				}
+			case tea.KeyEsc:
+				m.showEmojis = false
+				return m, nil
+			}
+		}
 
-	        switch msg.Type {
-	        case tea.KeyCtrlC, tea.KeyEsc:
-	                return m, tea.Quit
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			return m, tea.Quit
 
-	        case tea.KeyEnter:
-	                val := strings.TrimSpace(m.textinput.Value())
-	                if val == "" {
-	                        return m, nil
-	                }
+		case tea.KeyEnter:
+			val := strings.TrimSpace(m.textinput.Value())
+			if val == "" {
+				return m, nil
+			}
 
-	                if strings.HasPrefix(val, "/") {
-	                        return m.handleCommand(val)
-	                }
+			if strings.HasPrefix(val, "/") {
+				return m.handleCommand(val)
+			}
 
-	                // Replace emojis before sending
-	                val = emoji.Replace(val)
+			// Replace emojis before sending
+			val = emoji.Replace(val)
 
-	                // Send message
-	                err := m.cc.SendText(context.Background(), val)
-	                m.err = err
-	                m.textinput.Reset()
-	                return m, nil
-	        }
+			// Send message
+			err := m.cc.SendText(context.Background(), val)
+			m.err = err
+			m.textinput.Reset()
+			return m, nil
+		}
+
+	case switchRoomMsg:
+		if m.cc != nil {
+			m.cc.Close(websocket.StatusNormalClosure, "switching room")
+		}
+		m.cc = msg.cc
+		m.room = msg.room
+		m.username = msg.username
+		m.messages = []string{fmt.Sprintf("Switched to #%s", m.room)}
+		if len(msg.history) > 0 {
+			m.messages = append(m.messages, infoStyle(fmt.Sprintf("--- Loading %d messages ---", len(msg.history))))
+			for i := len(msg.history) - 1; i >= 0; i-- {
+				m.messages = append(m.messages, formatMessage(msg.history[i], false))
+			}
+			m.messages = append(m.messages, infoStyle("--- End of history ---"))
+		}
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
+
+		// Start a new reader for the new connection
+		return m, tea.Batch(
+			m.startReader(),
+			textinput.Blink,
+		)
+
+	case listRoomsMsg:
+		if len(msg.rooms) == 0 {
+			m.messages = append(m.messages, infoStyle("No rooms found."))
+		} else {
+			m.messages = append(m.messages, infoStyle(fmt.Sprintf("Rooms (%d): %s", len(msg.rooms), strings.Join(msg.rooms, ", "))))
+		}
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
+		return m, nil
+
 	case chatMsg:
 		m.messages = append(m.messages, formatMessage(client.Message(msg), true))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
+		return m, m.startReader()
 
 	case errMsg:
 		m.err = msg.err
@@ -558,36 +583,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.showEmojis = false
 
 	if strings.HasPrefix(val, "/") && !strings.Contains(val, " ") {
-	        m.showCommands = true
-	        m.filteredCmds = []string{}
-	        for _, cmd := range m.availableCmds {
-	                if strings.HasPrefix(cmd, val) {
-	                        m.filteredCmds = append(m.filteredCmds, cmd)
-	                }
-	        }
-	        if m.commandIndex >= len(m.filteredCmds) {
-	                m.commandIndex = 0
-	        }
-	        if len(m.filteredCmds) == 0 {
-	                m.showCommands = false
-	        }
+		m.showCommands = true
+		m.filteredCmds = []string{}
+		for _, cmd := range m.availableCmds {
+			if strings.HasPrefix(cmd, val) {
+				m.filteredCmds = append(m.filteredCmds, cmd)
+			}
+		}
+		if m.commandIndex >= len(m.filteredCmds) {
+			m.commandIndex = 0
+		}
+		if len(m.filteredCmds) == 0 {
+			m.showCommands = false
+		}
 	} else {
-	        // Emoji suggestions logic
-	        lastColon := strings.LastIndex(val, ":")
-	        if lastColon != -1 && !strings.Contains(val[lastColon:], " ") {
-	                m.filteredEmojis = emoji.Suggestions(val[lastColon:])
-	                if len(m.filteredEmojis) > 0 {
-	                        // Limit to 10 suggestions to avoid cluttering
-	                        if len(m.filteredEmojis) > 10 {
-	                                m.filteredEmojis = m.filteredEmojis[:10]
-	                        }
-	                        m.showEmojis = true
-	                        if m.emojiIndex >= len(m.filteredEmojis) {
-	                                m.emojiIndex = 0
-	                        }
-	                }
-	        }
+		// Emoji suggestions logic
+		lastColon := strings.LastIndex(val, ":")
+		if lastColon != -1 && !strings.Contains(val[lastColon:], " ") {
+			m.filteredEmojis = emoji.Suggestions(val[lastColon:])
+			if len(m.filteredEmojis) > 0 {
+				// Limit to 10 suggestions to avoid cluttering
+				if len(m.filteredEmojis) > 10 {
+					m.filteredEmojis = m.filteredEmojis[:10]
+				}
+				m.showEmojis = true
+				if m.emojiIndex >= len(m.filteredEmojis) {
+					m.emojiIndex = 0
+				}
+			}
+		}
 	}
+
 	m.viewport, vpCmd = m.viewport.Update(msg)
 	return m, tea.Batch(tiCmd, vpCmd)
 }
@@ -596,20 +622,36 @@ func (m model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	parts := strings.Fields(cmd)
 	switch parts[0] {
 	case "/commands", "/help":
-	        m.messages = append(m.messages, "\n--- Available Commands ---")
-	        m.messages = append(m.messages, "/commands, /help - Show this help")
-	        m.messages = append(m.messages, "/clear           - Clear message history")
-	        m.messages = append(m.messages, "/exit, /quit     - Leave chat")
-	        m.messages = append(m.messages, "/whoami          - Show current user info")
-	        m.messages = append(m.messages, "/emojis          - Show emoji help")
-	        m.messages = append(m.messages, "---------------------------\n")
+		m.messages = append(m.messages, "\n--- Available Commands ---")
+		m.messages = append(m.messages, "/commands, /help - Show this help")
+		m.messages = append(m.messages, "/clear           - Clear message history")
+		m.messages = append(m.messages, "/exit, /quit     - Leave chat")
+		m.messages = append(m.messages, "/whoami          - Show current user info")
+		m.messages = append(m.messages, "/emojis          - Show emoji help")
+		m.messages = append(m.messages, "/list            - List available rooms")
+		m.messages = append(m.messages, "/join <room>     - Join a room")
+		m.messages = append(m.messages, "/create <room>   - Create a new room")
+		m.messages = append(m.messages, "---------------------------\n")
+	case "/list":
+		m.textinput.Reset()
+		return m, m.listRooms()
+	case "/join", "/create":
+		if len(parts) < 2 {
+			m.messages = append(m.messages, errStyle("Usage: /join <room> or /create <room>"))
+		} else {
+			targetRoom := parts[1]
+			m.messages = append(m.messages, infoStyle(fmt.Sprintf("Switching to #%s...", targetRoom)))
+			m.textinput.Reset()
+			return m, m.switchRoom(targetRoom)
+		}
 	case "/emojis":
-	        m.messages = append(m.messages, "\n--- Emoji Support ---")
-	        m.messages = append(m.messages, "Type ':' followed by an alias to see suggestions.")
-	        m.messages = append(m.messages, "Example: :smile:, :heart:, :rocket:")
-	        m.messages = append(m.messages, "Emojis are auto-replaced on send.")
-	        m.messages = append(m.messages, "---------------------\n")
-	case "/clear":		m.messages = []string{fmt.Sprintf("Connected to #%s as %s", m.room, m.username)}
+		m.messages = append(m.messages, "\n--- Emoji Support ---")
+		m.messages = append(m.messages, "Type ':' followed by an alias to see suggestions.")
+		m.messages = append(m.messages, "Example: :smile:, :heart:, :rocket:")
+		m.messages = append(m.messages, "Emojis are auto-replaced on send.")
+		m.messages = append(m.messages, "---------------------\n")
+	case "/clear":
+		m.messages = []string{fmt.Sprintf("Connected to #%s as %s", m.room, m.username)}
 	case "/exit", "/quit":
 		return m, tea.Quit
 	case "/whoami":
@@ -621,6 +663,49 @@ func (m model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	m.viewport.GotoBottom()
 	m.textinput.Reset()
 	return m, nil
+}
+
+func (m model) startReader() tea.Cmd {
+	return func() tea.Msg {
+		msg, err := m.cc.ReadMessage(context.Background())
+		if err != nil {
+			return errMsg{err}
+		}
+		return chatMsg(msg)
+	}
+}
+
+func (m model) listRooms() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		rooms, err := client.ListRooms(ctx, m.serverURL, m.token)
+		if err != nil {
+			return errMsg{err}
+		}
+		return listRoomsMsg{rooms}
+	}
+}
+
+func (m model) switchRoom(room string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		cc, err := client.DialChat(ctx, m.serverURL, room, m.token)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		history, _ := client.FetchHistory(ctx, m.serverURL, room, m.token)
+
+		return switchRoomMsg{
+			room:     room,
+			cc:       cc,
+			username: m.username,
+			history:  history,
+		}
+	}
 }
 
 func (m model) View() string {
@@ -659,43 +744,40 @@ func (m model) View() string {
 			Padding(0, 1).
 			Render(b.String())
 
-		// We need to place this overlay at the bottom of the viewport area
-		// For simplicity in a basic TUI, we can just append it before the footer
-		// but a more advanced way would be absolute positioning.
 		content += "\n" + overlay
-		}
+	}
 
-		// Emoji overlay
-		if m.showEmojis && len(m.filteredEmojis) > 0 {
+	// Emoji overlay
+	if m.showEmojis && len(m.filteredEmojis) > 0 {
 		var b strings.Builder
 		b.WriteString(lipgloss.NewStyle().
-		        Foreground(lipgloss.Color("35")).
-		        Bold(true).
-		        Render(" Emojis:") + "\n")
+			Foreground(lipgloss.Color("35")).
+			Bold(true).
+			Render(" Emojis:") + "\n")
 
 		for i, e := range m.filteredEmojis {
-		        style := lipgloss.NewStyle().PaddingLeft(2)
-		        if i == m.emojiIndex {
-		                style = style.Foreground(lipgloss.Color("0")).
-		                        Background(lipgloss.Color("35")).
-		                        Bold(true)
-		        } else {
-		                style = style.Foreground(lipgloss.Color("255"))
-		        }
+			style := lipgloss.NewStyle().PaddingLeft(2)
+			if i == m.emojiIndex {
+				style = style.Foreground(lipgloss.Color("0")).
+					Background(lipgloss.Color("35")).
+					Bold(true)
+			} else {
+				style = style.Foreground(lipgloss.Color("255"))
+			}
 
-		        emojiChar := emoji.Replace(e)
-		        line := fmt.Sprintf("%-20s %s", e, emojiChar)
-		        b.WriteString(style.Render(line) + "\n")
+			emojiChar := emoji.Replace(e)
+			line := fmt.Sprintf("%-20s %s", e, emojiChar)
+			b.WriteString(style.Render(line) + "\n")
 		}
 
 		overlay := lipgloss.NewStyle().
-		        Border(lipgloss.RoundedBorder()).
-		        BorderForeground(lipgloss.Color("35")).
-		        Padding(0, 1).
-		        Render(b.String())
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("35")).
+			Padding(0, 1).
+			Render(b.String())
 
 		content += "\n" + overlay
-		}
+	}
 	footer := fmt.Sprintf("\n %s", m.textinput.View())
 
 	if m.err != nil {

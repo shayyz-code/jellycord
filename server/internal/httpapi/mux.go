@@ -49,6 +49,7 @@ func (s *Server) Mux() *http.ServeMux {
 
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 	mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
+	mux.HandleFunc("GET /rooms", s.requireAuth(s.handleRooms))
 	mux.HandleFunc("POST /admin/users", s.requireAdmin(s.handleAdminCreateUser))
 	mux.HandleFunc("GET /ws", s.requireAuth(s.handleWS))
 	mux.HandleFunc("GET /history", s.requireAuth(s.handleHistory))
@@ -156,6 +157,17 @@ func (w *statusWriter) Flush() {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rooms, err := s.store.ListRooms(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to list rooms"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {

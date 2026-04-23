@@ -97,6 +97,40 @@ func (c *ChatConn) ReadMessage(ctx context.Context) (Message, error) {
 	return m, nil
 }
 
+func ListRooms(ctx context.Context, serverBaseURL, token string) ([]string, error) {
+	if strings.TrimSpace(token) == "" {
+		return nil, errors.New("token is required")
+	}
+
+	u, err := url.Parse(serverBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = path.Join(u.Path, "/rooms")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("failed to list rooms: " + resp.Status)
+	}
+	var out struct {
+		Rooms []string `json:"rooms"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Rooms, nil
+}
+
 func FetchHistory(ctx context.Context, serverBaseURL, room, token string) ([]Message, error) {
 	if strings.TrimSpace(room) == "" {
 		return nil, errors.New("room is required")

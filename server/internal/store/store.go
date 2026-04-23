@@ -65,6 +65,21 @@ func (s *Store) GetMessageHistory(ctx context.Context, room string, limit int) (
 	return msgs, nil
 }
 
+func (s *Store) ListRooms(ctx context.Context) ([]string, error) {
+	iter := s.rdb.Scan(ctx, 0, "jellycord:history:*", 0).Iterator()
+	rooms := []string{}
+	prefix := "jellycord:history:"
+	for iter.Next(ctx) {
+		key := iter.Val()
+		room := strings.TrimPrefix(key, prefix)
+		rooms = append(rooms, room)
+	}
+	if err := iter.Err(); err != nil {
+		return nil, err
+	}
+	return rooms, nil
+}
+
 func historyKey(room string) string {
 	return "jellycord:history:" + room
 }
