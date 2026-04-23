@@ -51,6 +51,7 @@ FILES_TO_PUSH=(
     "go.mod"
     "go.sum"
     ".env.deploy"
+    ".env.secrets"
 )
 
 # Also push the entire server/internal directory
