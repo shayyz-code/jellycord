@@ -26,28 +26,28 @@ if [ ! -f ".env.deploy" ]; then
 fi
 
 # Load deployment variables
-# Expected: JELLYCORD_VPS_USER, JELLYCORD_VPS_IP, JELLYCORD_APP_DIR
+# Expected: JELLYCORD_VPS_USER, JELLYCORD_VPS_IP, APP_DIR
 set -a
 source .env.deploy
 set +a
 
 VPS_USER="${JELLYCORD_VPS_USER:-root}"
 VPS_IP="${JELLYCORD_VPS_IP:?JELLYCORD_VPS_IP must be set in .env.deploy}"
-REMOTE_DIR="${JELLYCORD_APP_DIR:-/home/$VPS_USER/jellycord}"
+REMOTE_DIR="${APP_DIR:-/home/$VPS_USER/jellycord}"
 SSH_TARGET="$VPS_USER@$VPS_IP"
 
 log_info "Deploying to ${BOLD}${SSH_TARGET}:${REMOTE_DIR}${NC}"
 
 # 1. Prepare remote directory
 log_step "Preparing remote directory..."
-ssh "$SSH_TARGET" "mkdir -p $REMOTE_DIR"
+ssh "$SSH_TARGET" "mkdir -p $REMOTE_DIR $REMOTE_DIR/server"
 log_success "Remote directory ready."
 
 # 2. Upload files one by one with status
 FILES_TO_PUSH=(
     "docker-compose.prod.yml"
     "server/Dockerfile"
-    ".dockerignore"
+    "server/.dockerignore"
     "go.mod"
     "go.sum"
     ".env.deploy"

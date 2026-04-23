@@ -43,16 +43,8 @@ func New(cfg config.Config, st *store.Store, j *auth.JWT) *Server {
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	})
-	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	})
+	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /livez", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
 
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
@@ -159,6 +151,10 @@ func (w *statusWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
