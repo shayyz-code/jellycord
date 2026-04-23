@@ -43,6 +43,9 @@ const (
 var (
 	timeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render
 	msgStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render
+	userStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("35")).Bold(true).Render
+	infoStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("36")).Render
+	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render
 )
 
 func formatMessageTime(sentAtMs int64) string {
@@ -54,9 +57,13 @@ func formatMessageTime(sentAtMs int64) string {
 	return t.Format("Jan 02 15:04")
 }
 
-func formatMessage(msg client.Message) string {
+func formatMessage(msg client.Message, isUnread bool) string {
 	ts := formatMessageTime(msg.SentAtMs)
-	return fmt.Sprintf("%s[%s]%s %s", colorPurple, msg.From, timeStyle(ts), msgStyle(msg.Text))
+	unreadMarker := ""
+	if isUnread {
+		unreadMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("• ")
+	}
+	return fmt.Sprintf("%s%s %s %s", unreadMarker, userStyle(msg.From), timeStyle(ts), msgStyle(msg.Text))
 }
 
 func main() {
@@ -356,11 +363,12 @@ func initialModelWithHistory(cc *client.ChatConn, room, username string, history
 
 	messages := []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)}
 	if len(history) > 0 {
-		messages = append(messages, fmt.Sprintf("%s--- Loading %d messages ---\n", colorCyan, len(history)))
+		messages = append(messages, infoStyle(fmt.Sprintf("--- Loading %d messages ---", len(history))))
 		// History from server is newest first (LPUSH), so we reverse to show chronologically
 		for i := len(history) - 1; i >= 0; i-- {
-			messages = append(messages, formatMessage(history[i]))
+			messages = append(messages, formatMessage(history[i], false))
 		}
+		messages = append(messages, infoStyle("--- End of history ---"))
 	}
 
 	return model{
@@ -402,7 +410,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		headerHeight := 3
 		footerHeight := 3
-		m.viewport = viewport.New(msg.Width, msg.Height-headerHeight-footerHeight)
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - headerHeight - footerHeight
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.textinput.Width = msg.Width - 5
 		return m, nil
@@ -432,7 +441,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case chatMsg:
-		m.messages = append(m.messages, formatMessage(client.Message(msg)))
+		m.messages = append(m.messages, formatMessage(client.Message(msg), true))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
 		return m, nil
@@ -481,7 +490,7 @@ func (m model) View() string {
 	footer := fmt.Sprintf("\n %s", m.textinput.View())
 
 	if m.err != nil {
-		footer += lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(fmt.Sprintf("\n Error: %v", m.err))
+		footer += "\n " + errStyle(fmt.Sprintf("Error: %v", m.err))
 	}
 
 	return header + "\n" + m.viewport.View() + footer
