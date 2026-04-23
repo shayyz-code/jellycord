@@ -357,8 +357,9 @@ func initialModelWithHistory(cc *client.ChatConn, room, username string, history
 	messages := []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)}
 	if len(history) > 0 {
 		messages = append(messages, fmt.Sprintf("%s--- Loading %d messages ---\n", colorCyan, len(history)))
-		for _, msg := range history {
-			messages = append(messages, formatMessage(msg))
+		// History from server is newest first (LPUSH), so we reverse to show chronologically
+		for i := len(history) - 1; i >= 0; i-- {
+			messages = append(messages, formatMessage(history[i]))
 		}
 	}
 

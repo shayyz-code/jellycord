@@ -56,6 +56,10 @@ func (h *Hub) Subscribe(room string) *Subscription {
 }
 
 func (h *Hub) Publish(ctx context.Context, msg Message) {
+	if h.saver != nil {
+		_ = h.saver(ctx, msg)
+	}
+
 	h.mu.RLock()
 	subs := h.rooms[msg.Room]
 	h.mu.RUnlock()
