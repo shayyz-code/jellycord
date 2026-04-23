@@ -7,33 +7,23 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { createClient } from "@/lib/supabase-browser"
-import {
-  type AuthChangeEvent,
-  type Session,
-  type Provider,
-} from "@supabase/supabase-js"
+import { apiFetch } from "@/lib/api"
 
 interface User {
-  id: string
-  email: string
   username: string
+  role: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   login: (
-    email: string,
+    username: string,
     password: string,
   ) => Promise<{ success: boolean; error?: string }>
   register: (
-    email: string,
-    password: string,
     username: string,
-  ) => Promise<{ success: boolean; error?: string }>
-  loginWithProvider: (
-    provider: Provider,
+    password: string,
   ) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
@@ -44,33 +34,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
 
   const refreshUser = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (user) {
-        let username = user.user_metadata?.username
-        if (!username) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("username")
-            .eq("id", user.id)
-            .single()
-          username = profile?.username
-        }
-
-        setUser({
-          id: user.id,
-          email: user.email!,
-          username: username || "Unknown",
-        })
-      } else {
+      const token = localStorage.getItem("jellycord_token")
+      if (!token) {
         setUser(null)
+        setLoading(false)
+        return
       }
+
+      const data = await apiFetch("/me")
+      setUser({
+        username: data.username,
+        role: data.role,
+      })
     } catch (error) {
+      console.error("Failed to refresh user:", error)
+      localStorage.removeItem("jellycord_token")
       setUser(null)
     } finally {
       setLoading(false)
@@ -78,115 +59,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (event: AuthChangeEvent, session: Session | null) => {
-        if (session?.user) {
-          let username = session.user.user_metadata?.username
-          if (!username) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("username")
-              .eq("id", session.user.id)
-              .single()
-            username = profile?.username
-          }
-
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            username: username || "Unknown",
-          })
-        } else {
-          setUser(null)
-        }
-        setLoading(false)
-      },
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
+    refreshUser()
   }, [])
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const data = await apiFetch("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
       })
 
-      if (error) {
-        return { success: false, error: error.message }
+      if (data.token) {
+        localStorage.setItem("jellycord_token", data.token)
+        setUser({
+          username: data.user.username,
+          role: data.user.role,
+        })
+        return { success: true }
       }
 
-      return { success: true }
+      return { success: false, error: "Invalid response from server" }
     } catch (error: any) {
-      return { success: false, error: error.message || "Network error" }
+      return { success: false, error: error.message || "Login failed" }
     }
   }
 
   const register = async (
-    email: string,
-    password: string,
     username: string,
+    password: string,
   ) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username,
-            name: username,
-          },
-        },
+      const data = await apiFetch("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
       })
 
-      if (error) {
-        return { success: false, error: error.message }
-      }
-
-      if (data.user) {
-        const { error: profileError } = await supabase.from("profiles").upsert({
-          id: data.user.id,
-          username,
-          name: username,
+      if (data.token) {
+        localStorage.setItem("jellycord_token", data.token)
+        setUser({
+          username: data.user.username,
+          role: data.user.role,
         })
-
-        if (profileError) {
-          console.error("Error creating profile:", profileError)
-        }
+        return { success: true }
       }
 
-      return { success: true }
+      return { success: false, error: "Registration failed" }
     } catch (error: any) {
-      return { success: false, error: error.message || "Network error" }
-    }
-  }
-
-  const loginWithProvider = async (provider: Provider) => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      })
-
-      if (error) {
-        return { success: false, error: error.message }
-      }
-
-      return { success: true }
-    } catch (error: any) {
-      return { success: false, error: error.message || "Network error" }
+      return { success: false, error: error.message || "Registration failed" }
     }
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
+    localStorage.removeItem("jellycord_token")
     setUser(null)
   }
 
@@ -197,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         login,
         register,
-        loginWithProvider,
         logout,
         refreshUser,
       }}

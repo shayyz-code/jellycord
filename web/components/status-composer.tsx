@@ -22,6 +22,8 @@ interface StatusComposerProps {
   onStatusPosted: () => void
 }
 
+import { apiFetch } from "@/lib/api"
+
 export function StatusComposer({
   primaryColor,
   onStatusPosted,
@@ -35,17 +37,14 @@ export function StatusComposer({
 
     setPosting(true)
     try {
-      const res = await fetch("/api/status", {
+      await apiFetch("/statuses", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content, mood }),
       })
 
-      if (res.ok) {
-        setContent("")
-        setMood(null)
-        onStatusPosted()
-      }
+      setContent("")
+      setMood(null)
+      onStatusPosted()
     } catch (error) {
       console.error("Failed to post status:", error)
     } finally {

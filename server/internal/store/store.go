@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -23,6 +24,25 @@ type User struct {
 	PasswordHash string `json:"-"`
 }
 
+type Profile struct {
+	Username     string `json:"username"`
+	Name         string `json:"name"`
+	Bio          string `json:"bio"`
+	Avatar       string `json:"avatar"`
+	Character    string `json:"character"`
+	Banner       string `json:"banner"`
+	PrimaryColor string `json:"primary_color"`
+	Links        string `json:"links"` // JSON string
+}
+
+type Status struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Content   string `json:"content"`
+	Mood      string `json:"mood"`
+	CreatedAt string `json:"created_at"`
+}
+
 type Store struct {
 	rdb *redis.Client
 }
@@ -36,6 +56,9 @@ func (s *Store) Ping(ctx context.Context) error {
 }
 
 func (s *Store) SaveMessage(ctx context.Context, msg chat.Message) error {
+	if msg.Type != "message" {
+		return nil
+	}
 	key := historyKey(msg.Room)
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -177,6 +200,119 @@ func (s *Store) GetUser(ctx context.Context, username string) (User, error) {
 
 func userKey(username string) string {
 	return "jellycord:user:" + username
+}
+
+func profileKey(username string) string {
+	return "jellycord:profile:" + username
+}
+
+func statusKey(username string) string {
+	return "jellycord:statuses:" + username
+}
+
+func (s *Store) GetProfile(ctx context.Context, username string) (Profile, error) {
+	username = normalizeUsername(username)
+	key := profileKey(username)
+	m, err := s.rdb.HGetAll(ctx, key).Result()
+	if err != nil {
+		return Profile{}, err
+	}
+	if len(m) == 0 {
+		return Profile{Username: username}, nil
+	}
+	return Profile{
+		Username:     username,
+		Name:         m["name"],
+		Bio:          m["bio"],
+		Avatar:       m["avatar"],
+		Character:    m["character"],
+		Banner:       m["banner"],
+		PrimaryColor: m["primary_color"],
+		Links:        m["links"],
+	}, nil
+}
+
+func (s *Store) UpdateProfile(ctx context.Context, p Profile) error {
+	p.Username = normalizeUsername(p.Username)
+	key := profileKey(p.Username)
+	_, err := s.rdb.HSet(ctx, key,
+		"name", p.Name,
+		"bio", p.Bio,
+		"avatar", p.Avatar,
+		"character", p.Character,
+		"banner", p.Banner,
+		"primary_color", p.PrimaryColor,
+		"links", p.Links,
+	).Result()
+	return err
+}
+
+func (s *Store) CreateStatus(ctx context.Context, st Status) error {
+	st.Username = normalizeUsername(st.Username)
+	if st.ID == "" {
+		st.ID = time.Now().Format("20060102150405") + "-" + st.Username
+	}
+	if st.CreatedAt == "" {
+		st.CreatedAt = time.Now().Format(time.RFC3339)
+	}
+
+	data, err := json.Marshal(st)
+	if err != nil {
+		return err
+	}
+
+	key := statusKey(st.Username)
+	globalKey := "jellycord:global:statuses"
+
+	pipe := s.rdb.Pipeline()
+	pipe.LPush(ctx, key, data)
+	pipe.LTrim(ctx, key, 0, 99)
+	pipe.LPush(ctx, globalKey, data)
+	pipe.LTrim(ctx, globalKey, 0, 99)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (s *Store) GetStatuses(ctx context.Context, username string, limit int) ([]Status, error) {
+	var key string
+	if username != "" {
+		key = statusKey(normalizeUsername(username))
+	} else {
+		key = "jellycord:global:statuses"
+	}
+
+	data, err := s.rdb.LRange(ctx, key, 0, int64(limit-1)).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	statuses := make([]Status, 0, len(data))
+	for _, raw := range data {
+		var st Status
+		if err := json.Unmarshal([]byte(raw), &st); err != nil {
+			continue
+		}
+		statuses = append(statuses, st)
+	}
+	return statuses, nil
+}
+
+func (s *Store) DeleteStatus(ctx context.Context, username, statusID string) error {
+	key := statusKey(normalizeUsername(username))
+	data, err := s.rdb.LRange(ctx, key, 0, -1).Result()
+	if err != nil {
+		return err
+	}
+
+	for _, raw := range data {
+		var st Status
+		_ = json.Unmarshal([]byte(raw), &st)
+		if st.ID == statusID {
+			s.rdb.LRem(ctx, key, 1, raw)
+			break
+		}
+	}
+	return nil
 }
 
 func normalizeUsername(u string) string {

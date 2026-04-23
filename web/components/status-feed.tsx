@@ -30,17 +30,19 @@ function formatTimeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
+import { apiFetch } from "@/lib/api";
+
 export function StatusFeed({ statuses, primaryColor, isOwner, onStatusDeleted }: StatusFeedProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/status?id=${id}`, {
+      await apiFetch(`/statuses/${id}`, {
         method: "DELETE",
       });
 
-      if (res.ok && onStatusDeleted) {
+      if (onStatusDeleted) {
         onStatusDeleted();
       }
     } catch (error) {

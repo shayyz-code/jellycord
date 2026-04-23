@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase"
+import { apiFetchServer } from "@/lib/api-server"
 
 export interface Profile {
-  id: string
   username: string
   name: string
   bio: string
@@ -16,69 +15,45 @@ export interface Profile {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const username = searchParams.get("username")
-
-  const supabase = await createClient()
+  const authHeader = request.headers.get("Authorization")
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : undefined
 
   if (username) {
-    // Get public profile by username
     try {
-      const { data: user, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("username", username)
-        .single()
-
-      if (error || !user) throw error
-
+      const data = await apiFetchServer(`/profile/${username}`)
       const profile = {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        bio: user.bio || "",
-        avatar: user.avatar || "/placeholder-user.jpg",
-        character: user.character || "/characters/pixel-cat.jpg",
-        banner: user.banner || "/banners/default-banner.jpg",
-        primaryColor: user.primary_color || "#f472b6",
-        links: user.links || {},
+        username: data.username,
+        name: data.name || data.username,
+        bio: data.bio || "",
+        avatar: data.avatar || "/placeholder-user.jpg",
+        character: data.character || "/characters/pixel-cat.jpg",
+        banner: data.banner || "/banners/default-banner.jpg",
+        primaryColor: data.primary_color || "#f472b6",
+        links: data.links ? JSON.parse(data.links) : {},
       }
-
       return NextResponse.json({ profile })
     } catch (error) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
   }
 
-  // Get current user's profile
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   try {
-    // Fetch latest user data
-    const { data: fullUser, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single()
-
-    if (error) throw error
-
+    const me = await apiFetchServer("/me", {}, token)
+    const data = await apiFetchServer(`/profile/${me.username}`, {}, token)
     const profile = {
-      id: fullUser.id,
-      username: fullUser.username,
-      name: fullUser.name,
-      bio: fullUser.bio || "",
-      avatar: fullUser.avatar || "/placeholder-user.jpg",
-      character: fullUser.character || "/characters/pixel-cat.jpg",
-      banner: fullUser.banner || "/banners/default-banner.jpg",
-      primaryColor: fullUser.primary_color || "#f472b6",
-      links: fullUser.links || {},
+      username: data.username,
+      name: data.name || data.username,
+      bio: data.bio || "",
+      avatar: data.avatar || "/placeholder-user.jpg",
+      character: data.character || "/characters/pixel-cat.jpg",
+      banner: data.banner || "/banners/default-banner.jpg",
+      primaryColor: data.primary_color || "#f472b6",
+      links: data.links ? JSON.parse(data.links) : {},
     }
-
     return NextResponse.json({ profile })
   } catch (error) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -86,52 +61,45 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const authHeader = request.headers.get("Authorization")
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : undefined
 
-  if (!user) {
+  if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   try {
     const body = await request.json()
+    const profileUpdate = {
+      name: body.name,
+      bio: body.bio,
+      avatar: body.avatar,
+      character: body.character,
+      banner: body.banner,
+      primary_color: body.primaryColor,
+      links: JSON.stringify(body.links || {}),
+    }
 
-    // Update user in Supabase
-    const { data: updatedUser, error } = await supabase
-      .from("profiles")
-      .update({
-        name: body.name,
-        bio: body.bio,
-        avatar: body.avatar,
-        character: body.character,
-        banner: body.banner,
-        primary_color: body.primaryColor,
-        links: body.links,
-      })
-      .eq("id", user.id)
-      .select()
-      .single()
-
-    if (error) throw error
+    const data = await apiFetchServer("/profile", {
+      method: "POST",
+      body: JSON.stringify(profileUpdate),
+    }, token)
 
     const profile = {
-      id: updatedUser.id,
-      username: updatedUser.username,
-      name: updatedUser.name,
-      bio: updatedUser.bio || "",
-      avatar: updatedUser.avatar || "/placeholder-user.jpg",
-      character: updatedUser.character || "/characters/pixel-cat.jpg",
-      banner: updatedUser.banner || "/banners/default-banner.jpg",
-      primaryColor: updatedUser.primary_color || "#f472b6",
-      links: updatedUser.links || {},
+      username: data.username,
+      name: data.name || data.username,
+      bio: data.bio || "",
+      avatar: data.avatar || "/placeholder-user.jpg",
+      character: data.character || "/characters/pixel-cat.jpg",
+      banner: data.banner || "/banners/default-banner.jpg",
+      primaryColor: data.primary_color || "#f472b6",
+      links: data.links ? JSON.parse(data.links) : {},
     }
 
     return NextResponse.json({ profile })
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
-      { error: "Failed to update profile" },
+      { error: error.message || "Failed to update profile" },
       { status: 500 },
     )
   }

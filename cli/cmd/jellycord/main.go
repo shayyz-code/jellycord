@@ -64,21 +64,28 @@ func formatMessageTime(sentAtMs int64) string {
 }
 
 func formatMessage(msg client.Message, isUnread bool) string {
-	ts := formatMessageTime(msg.SentAtMs)
-	unreadStr := "  "
-	if isUnread {
-		unreadStr = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("• ")
-	}
+        ts := formatMessageTime(msg.SentAtMs)
 
-	text := emoji.Replace(msg.Text)
+        switch msg.Type {
+        case "join":
+                return infoStyle(fmt.Sprintf("  --> %s joined #%s", msg.From, msg.Room))
+        case "leave":
+                return infoStyle(fmt.Sprintf("  <-- %s left #%s", msg.From, msg.Room))
+        }
 
-	unread := unreadStyle.Render(unreadStr)
-	user := usernameColumnStyle.Render(userStyle(msg.From))
-	timeStr := timeColumnStyle.Render(timeStyle(ts))
+        unreadStr := "  "
+        if isUnread {
+                unreadStr = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("• ")
+        }
 
-	return fmt.Sprintf("%s%s%s%s", unread, user, timeStr, msgStyle(text))
+        text := emoji.Replace(msg.Text)
+
+        unread := unreadStyle.Render(unreadStr)
+        user := usernameColumnStyle.Render(userStyle(msg.From))
+        timeStr := timeColumnStyle.Render(timeStyle(ts))
+
+        return fmt.Sprintf("%s%s%s%s", unread, user, timeStr, msgStyle(text))
 }
-
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

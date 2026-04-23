@@ -6,12 +6,10 @@ import { ImageIcon, Upload, X, Search, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase-browser"
 
 interface BannerPickerProps {
   banner: string
   onBannerChange: (banner: string) => void
-  userId?: string
 }
 
 const PRESET_BANNERS = ["/banners/default-banner.jpg"]
@@ -23,7 +21,6 @@ const TENOR_CLIENT_KEY = "jellycord"
 export function BannerPicker({
   banner,
   onBannerChange,
-  userId,
 }: BannerPickerProps) {
   const [showOptions, setShowOptions] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -31,14 +28,13 @@ export function BannerPicker({
   const [gifs, setGifs] = useState<string[]>([])
   const [searching, setSearching] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const supabase = createClient()
 
   // Initial popular GIFs
   useEffect(() => {
     if (showOptions && gifs.length === 0) {
       searchGifs("anime scenery")
     }
-  }, [showOptions])
+  }, [showOptions, gifs.length])
 
   const searchGifs = async (query: string) => {
     if (!query) return
@@ -73,8 +69,8 @@ export function BannerPicker({
       return
     }
 
-    if (!userId) {
-      // Demo mode: use local data URL
+    setUploading(true)
+    try {
       const reader = new FileReader()
       reader.onload = (event) => {
         if (event.target?.result) {
@@ -83,46 +79,9 @@ export function BannerPicker({
         }
       }
       reader.readAsDataURL(file)
-      return
-    }
-
-    setUploading(true)
-    try {
-      const fileExt = file.name.split(".").pop()
-      const fileName = `${userId}/${Date.now()}.${fileExt}`
-
-      const { error: uploadError } = await supabase.storage
-        .from("banners")
-        .upload(fileName, file, {
-          upsert: true,
-        })
-
-      if (uploadError) {
-        // Fallback to data URL if storage fails (e.g. bucket doesn't exist)
-        console.warn(
-          "Storage upload failed, falling back to data URL:",
-          uploadError,
-        )
-        const reader = new FileReader()
-        reader.onload = (event) => {
-          if (event.target?.result) {
-            onBannerChange(event.target.result as string)
-            setShowOptions(false)
-          }
-        }
-        reader.readAsDataURL(file)
-        return
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("banners").getPublicUrl(fileName)
-
-      onBannerChange(publicUrl)
-      setShowOptions(false)
     } catch (error) {
-      console.error("Error uploading banner:", error)
-      alert("Failed to upload banner")
+      console.error("Error processing banner:", error)
+      alert("Failed to process banner")
     } finally {
       setUploading(false)
     }

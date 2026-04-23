@@ -26,6 +26,7 @@ import type { Status } from "@/app/api/status/route"
 import { StatusComposer } from "@/components/status-composer"
 import { StatusFeed } from "@/components/status-feed"
 import Nav from "@/components/nav"
+import { apiFetch } from "@/lib/api"
 
 type LinkType =
   | "github"
@@ -89,9 +90,7 @@ export default function EditProfilePage() {
       if (!user) return
 
       try {
-        const res = await fetch("/api/profile")
-        const data = await res.json()
-
+        const data = await apiFetch("/profile")
         if (data.profile) {
           setName(data.profile.name || "")
           setBio(data.profile.bio || "")
@@ -117,8 +116,7 @@ export default function EditProfilePage() {
     async function loadStatuses() {
       if (!user) return
       try {
-        const res = await fetch("/api/status")
-        const data = await res.json()
+        const data = await apiFetch(`/statuses?username=${user.username}`)
         setStatuses(data.statuses || [])
       } catch (error) {
         console.error("Failed to load statuses:", error)
@@ -139,9 +137,8 @@ export default function EditProfilePage() {
     setSaved(false)
 
     try {
-      const res = await fetch("/api/profile", {
+      await apiFetch("/profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: user?.username,
           name,
@@ -153,10 +150,8 @@ export default function EditProfilePage() {
         }),
       })
 
-      if (res.ok) {
-        setSaved(true)
-        setTimeout(() => setSaved(false), 3000)
-      }
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
     } catch (error) {
       console.error("Failed to save profile:", error)
     } finally {
@@ -351,7 +346,6 @@ export default function EditProfilePage() {
                     <BannerPicker
                       banner={banner}
                       onBannerChange={setBanner}
-                      userId={user.id}
                     />
                   </div>
                 </CardContent>

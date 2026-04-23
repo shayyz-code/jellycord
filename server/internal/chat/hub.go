@@ -6,6 +6,7 @@ import (
 )
 
 type Message struct {
+	Type     string `json:"type"` // "message", "join", "leave"
 	Room     string `json:"room"`
 	From     string `json:"from"`
 	Text     string `json:"text"`

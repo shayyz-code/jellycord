@@ -48,8 +48,14 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
 
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
+	mux.HandleFunc("POST /auth/register", s.handleRegister)
 	mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("GET /rooms", s.requireAuth(s.handleRooms))
+	mux.HandleFunc("GET /profile/{username}", s.handleGetProfile)
+	mux.HandleFunc("POST /profile", s.requireAuth(s.handleUpdateProfile))
+	mux.HandleFunc("GET /statuses", s.handleGetStatuses)
+	mux.HandleFunc("POST /statuses", s.requireAuth(s.handleCreateStatus))
+	mux.HandleFunc("DELETE /statuses/{id}", s.requireAuth(s.handleDeleteStatus))
 	mux.HandleFunc("POST /admin/users", s.requireAdmin(s.handleAdminCreateUser))
 	mux.HandleFunc("GET /ws", s.requireAuth(s.handleWS))
 	mux.HandleFunc("GET /history", s.requireAuth(s.handleHistory))
@@ -218,7 +224,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
+		CompressionMode:    websocket.CompressionDisabled,
 		InsecureSkipVerify: true, // For development, let it work with any origin
 	})
 	if err != nil {
@@ -229,6 +235,22 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	sub := s.hub.Subscribe(room)
 	defer sub.Close()
+
+	// Notify join
+	s.hub.Publish(r.Context(), chat.Message{
+		Type:     "join",
+		Room:     room,
+		From:     claims.Username,
+		SentAtMs: time.Now().UnixMilli(),
+	})
+
+	// Notify leave on disconnect
+	defer s.hub.Publish(context.Background(), chat.Message{
+		Type:     "leave",
+		Room:     room,
+		From:     claims.Username,
+		SentAtMs: time.Now().UnixMilli(),
+	})
 
 	// Keep-alive heartbeat
 	go func() {
@@ -252,13 +274,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(writeDone)
 		for m := range sub.C {
-			_ = wsWriteJSON(r.Context(), c, map[string]any{
-				"type":       "message",
-				"room":       m.Room,
-				"from":       m.From,
-				"text":       m.Text,
-				"sent_at_ms": m.SentAtMs,
-			})
+			_ = wsWriteJSON(r.Context(), c, m)
 		}
 	}()
 
@@ -279,6 +295,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		s.hub.Publish(r.Context(), chat.Message{
+			Type:     "message",
 			Room:     room,
 			From:     claims.Username,
 			Text:     text,
@@ -315,6 +332,112 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"token": tok,
 		"user":  map[string]any{"username": u.Username, "role": u.Role},
 	})
+}
+
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if err := s.store.CreateUser(r.Context(), req.Username, req.Password, "user"); err != nil {
+		if errors.Is(err, store.ErrUserExists) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "user already exists"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	u, _ := s.store.GetUser(r.Context(), req.Username)
+	tok, err := s.jwt.Mint(u.Username, u.Role, 24*time.Hour)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to mint token"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"token": tok,
+		"user":  map[string]any{"username": u.Username, "role": u.Role},
+	})
+}
+
+func (s *Server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	p, err := s.store.GetProfile(r.Context(), username)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to get profile"})
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	claims, _ := claimsFromCtx(r.Context())
+	var p store.Profile
+	if err := readJSON(r, &p); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	p.Username = claims.Username // Ensure they only update their own profile
+	if err := s.store.UpdateProfile(r.Context(), p); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to update profile"})
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleGetStatuses(w http.ResponseWriter, r *http.Request) {
+	username := r.URL.Query().Get("username")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+
+	statuses, err := s.store.GetStatuses(r.Context(), username, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to get statuses"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"statuses": statuses})
+}
+
+func (s *Server) handleCreateStatus(w http.ResponseWriter, r *http.Request) {
+	claims, _ := claimsFromCtx(r.Context())
+	var req struct {
+		Content string `json:"content"`
+		Mood    string `json:"mood"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	st := store.Status{
+		Username: claims.Username,
+		Content:  req.Content,
+		Mood:     req.Mood,
+	}
+	if err := s.store.CreateStatus(r.Context(), st); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to create status"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, st)
+}
+
+func (s *Server) handleDeleteStatus(w http.ResponseWriter, r *http.Request) {
+	claims, _ := claimsFromCtx(r.Context())
+	statusID := r.PathValue("id")
+	if err := s.store.DeleteStatus(r.Context(), claims.Username, statusID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to delete status"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
