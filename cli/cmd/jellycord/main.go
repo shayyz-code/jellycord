@@ -358,16 +358,21 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 	}
 }
 
-type chatMsg client.Message
-type errMsg struct{ err error }
+type chatMsg struct {
+        msg client.Message
+        cc  *client.ChatConn
+}
+type errMsg struct {
+        err error
+        cc  *client.ChatConn
+}
 type listRoomsMsg struct{ rooms []string }
 type switchRoomMsg struct {
-	room     string
-	cc       *client.ChatConn
-	username string
-	history  []client.Message
+        room     string
+        cc       *client.ChatConn
+        username string
+        history  []client.Message
 }
-
 type model struct {
 	cc            *client.ChatConn
 	serverURL     string
@@ -565,15 +570,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case chatMsg:
-		m.messages = append(m.messages, formatMessage(client.Message(msg), true))
+		if msg.cc != m.cc {
+			return m, nil
+		}
+		m.messages = append(m.messages, formatMessage(msg.msg, true))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
 		return m, m.startReader()
 
 	case errMsg:
+		if msg.cc != m.cc || websocket.CloseStatus(msg.err) == websocket.StatusNormalClosure {
+			return m, nil
+		}
 		m.err = msg.err
-		return m, nil
-	}
+		return m, nil	}
 
 	m.textinput, tiCmd = m.textinput.Update(msg)
 
@@ -666,13 +676,13 @@ func (m model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) startReader() tea.Cmd {
-	return func() tea.Msg {
-		msg, err := m.cc.ReadMessage(context.Background())
-		if err != nil {
-			return errMsg{err}
-		}
-		return chatMsg(msg)
-	}
+        return func() tea.Msg {
+                msg, err := m.cc.ReadMessage(context.Background())
+                if err != nil {
+                        return errMsg{err: err, cc: m.cc}
+                }
+                return chatMsg{msg: msg, cc: m.cc}
+        }
 }
 
 func (m model) listRooms() tea.Cmd {
@@ -681,7 +691,7 @@ func (m model) listRooms() tea.Cmd {
 		defer cancel()
 		rooms, err := client.ListRooms(ctx, m.serverURL, m.token)
 		if err != nil {
-			return errMsg{err}
+			return errMsg{err: err, cc: m.cc}
 		}
 		return listRoomsMsg{rooms}
 	}
@@ -694,7 +704,7 @@ func (m model) switchRoom(room string) tea.Cmd {
 
 		cc, err := client.DialChat(ctx, m.serverURL, room, m.token)
 		if err != nil {
-			return errMsg{err}
+			return errMsg{err: err, cc: m.cc}
 		}
 
 		history, _ := client.FetchHistory(ctx, m.serverURL, room, m.token)
