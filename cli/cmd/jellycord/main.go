@@ -326,7 +326,7 @@ type model struct {
 
 func initialModel(cc *client.ChatConn, room, username string) model {
 	ti := textinput.New()
-	ti.Placeholder = "Type a message... (/commands for help)"
+	ti.Placeholder = "Type a message... (/help for commands)"
 	ti.Focus()
 	ti.CharLimit = 256
 	ti.Width = 80
@@ -336,7 +336,7 @@ func initialModel(cc *client.ChatConn, room, username string) model {
 		room:      room,
 		username:  username,
 		textinput: ti,
-		messages:  []string{fmt.Sprintf("Connected to #%s as %s", room, username)},
+		messages:  []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)},
 	}
 }
 

@@ -72,7 +72,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("jellycord-server listening", "addr", cfg.Addr)
+		slog.Info("jellycord-server started", "addr", cfg.Addr, "env", os.Getenv("JELLYCORD_ENV"))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server failed", "error", err)
 			os.Exit(1)
