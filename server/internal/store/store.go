@@ -3,11 +3,14 @@ package store
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/shayyz-code/jellycord/server/internal/chat"
 )
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
@@ -30,6 +33,40 @@ func New(rdb *redis.Client) *Store {
 
 func (s *Store) Ping(ctx context.Context) error {
 	return s.rdb.Ping(ctx).Err()
+}
+
+func (s *Store) SaveMessage(ctx context.Context, msg chat.Message) error {
+	key := historyKey(msg.Room)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	pipe := s.rdb.Pipeline()
+	pipe.LPush(ctx, key, data)
+	pipe.LTrim(ctx, key, 0, 99)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (s *Store) GetMessageHistory(ctx context.Context, room string, limit int) ([]chat.Message, error) {
+	key := historyKey(room)
+	data, err := s.rdb.LRange(ctx, key, 0, int64(limit-1)).Result()
+	if err != nil {
+		return nil, err
+	}
+	msgs := make([]chat.Message, 0, len(data))
+	for _, raw := range data {
+		var m chat.Message
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			continue
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, nil
+}
+
+func historyKey(room string) string {
+	return "jellycord:history:" + room
 }
 
 func (s *Store) CreateUser(ctx context.Context, username, password, role string) error {

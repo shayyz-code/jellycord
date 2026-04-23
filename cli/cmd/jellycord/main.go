@@ -40,6 +40,25 @@ const (
 	colorBold   = "\033[1m"
 )
 
+var (
+	timeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render
+	msgStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render
+)
+
+func formatMessageTime(sentAtMs int64) string {
+	t := time.UnixMilli(sentAtMs)
+	now := time.Now()
+	if t.Format("2006-01-02") == now.Format("2006-01-02") {
+		return t.Format("15:04")
+	}
+	return t.Format("Jan 02 15:04")
+}
+
+func formatMessage(msg client.Message) string {
+	ts := formatMessageTime(msg.SentAtMs)
+	return fmt.Sprintf("%s[%s]%s %s", colorPurple, msg.From, timeStyle(ts), msgStyle(msg.Text))
+}
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -292,7 +311,11 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 	}
 	defer cc.Close(websocket.StatusNormalClosure, "bye")
 
-	p := tea.NewProgram(initialModel(cc, roomName, cfg.Username))
+	historyCtx, histCancel := context.WithTimeout(ctx, 8*time.Second)
+	historyMessages, _ := client.FetchHistory(historyCtx, serverURL, roomName, token)
+	histCancel()
+
+	p := tea.NewProgram(initialModelWithHistory(cc, roomName, cfg.Username, historyMessages))
 
 	// WebSocket reader
 	go func() {
@@ -322,6 +345,30 @@ type model struct {
 	textinput textinput.Model
 	messages  []string
 	err       error
+}
+
+func initialModelWithHistory(cc *client.ChatConn, room, username string, history []client.Message) model {
+	ti := textinput.New()
+	ti.Placeholder = "Type a message... (/help for commands)"
+	ti.Focus()
+	ti.CharLimit = 256
+	ti.Width = 80
+
+	messages := []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)}
+	if len(history) > 0 {
+		messages = append(messages, fmt.Sprintf("%s--- Loading %d messages ---\n", colorCyan, len(history)))
+		for _, msg := range history {
+			messages = append(messages, formatMessage(msg))
+		}
+	}
+
+	return model{
+		cc:        cc,
+		room:      room,
+		username:  username,
+		textinput: ti,
+		messages:  messages,
+	}
 }
 
 func initialModel(cc *client.ChatConn, room, username string) model {
@@ -384,7 +431,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case chatMsg:
-		m.messages = append(m.messages, fmt.Sprintf("[%s] %s", msg.From, msg.Text))
+		m.messages = append(m.messages, formatMessage(client.Message(msg)))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
 		return m, nil

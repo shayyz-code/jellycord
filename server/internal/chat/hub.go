@@ -27,13 +27,16 @@ func (s *Subscription) Close() {
 	})
 }
 
+type SaveFunc func(ctx context.Context, msg Message) error
+
 type Hub struct {
+	saver SaveFunc
 	mu    sync.RWMutex
 	rooms map[string]map[*Subscription]struct{}
 }
 
-func NewHub() *Hub {
-	return &Hub{rooms: make(map[string]map[*Subscription]struct{})}
+func NewHub(saver SaveFunc) *Hub {
+	return &Hub{saver: saver, rooms: make(map[string]map[*Subscription]struct{})}
 }
 
 func (h *Hub) Subscribe(room string) *Subscription {
@@ -83,4 +86,3 @@ func (h *Hub) unsubscribe(sub *Subscription) {
 		delete(h.rooms, sub.Room)
 	}
 }
-

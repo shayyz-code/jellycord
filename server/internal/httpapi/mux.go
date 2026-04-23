@@ -37,7 +37,7 @@ type Server struct {
 }
 
 func New(cfg config.Config, st *store.Store, j *auth.JWT) *Server {
-	return &Server{cfg: cfg, store: st, jwt: j, hub: chat.NewHub()}
+	return &Server{cfg: cfg, store: st, jwt: j, hub: chat.NewHub(st.SaveMessage)}
 }
 
 func (s *Server) Mux() *http.ServeMux {
@@ -51,6 +51,7 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("POST /admin/users", s.requireAdmin(s.handleAdminCreateUser))
 	mux.HandleFunc("GET /ws", s.requireAuth(s.handleWS))
+	mux.HandleFunc("GET /history", s.requireAuth(s.handleHistory))
 
 	return mux
 }
@@ -155,6 +156,30 @@ func (w *statusWriter) Flush() {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	room := strings.TrimSpace(r.URL.Query().Get("room"))
+	if room == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "room is required"})
+		return
+	}
+	limitStr := strings.TrimSpace(r.URL.Query().Get("limit"))
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	msgs, err := s.store.GetMessageHistory(ctx, room, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to get history"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {

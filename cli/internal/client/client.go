@@ -93,3 +93,50 @@ func (c *ChatConn) ReadMessage(ctx context.Context) (Message, error) {
 	return m, nil
 }
 
+func FetchHistory(ctx context.Context, serverBaseURL, room, token string) ([]Message, error) {
+	if strings.TrimSpace(room) == "" {
+		return nil, errors.New("room is required")
+	}
+	if strings.TrimSpace(token) == "" {
+		return nil, errors.New("token is required")
+	}
+
+	u, err := url.Parse(serverBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, errors.New("server must be http(s) URL")
+	}
+	if u.Path == "" {
+		u.Path = "/"
+	}
+	u.Path = path.Join(u.Path, "/history")
+	q := u.Query()
+	q.Set("room", room)
+	q.Set("limit", "50")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("failed to fetch history: " + resp.Status)
+	}
+	var out struct {
+		Messages []Message `json:"messages"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Messages, nil
+}
+

@@ -7,7 +7,7 @@ import (
 )
 
 func TestHub_BroadcastToRoomSubscribers(t *testing.T) {
-	h := NewHub()
+	h := NewHub(nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
