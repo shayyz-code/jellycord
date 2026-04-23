@@ -168,9 +168,14 @@ You can install the JellyCord CLI using several methods:
   scoop install jellycord
   ```
 - **Shell Installer (Universal)**:
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/shayyz-code/jellycord/main/scripts/install-cli.sh | bash
-  ```
+  - macOS/Linux:
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/shayyz-code/jellycord/main/scripts/install-cli.sh | bash
+    ```
+  - Windows (PowerShell):
+    ```powershell
+    iex (irm https://raw.githubusercontent.com/shayyz-code/jellycord/main/scripts/install-cli.ps1)
+    ```
 - **Go Install**:
   ```bash
   go install github.com/shayyz-code/jellycord/cli/cmd/jellycord@latest
