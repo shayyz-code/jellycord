@@ -8,6 +8,18 @@ services:
     volumes:
       - redis-data:/data
 
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: jellycord
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   server:
     build:
       context: .
@@ -16,12 +28,15 @@ services:
     environment:
       JELLYCORD_ADDR: ":8080"
       JELLYCORD_REDIS_URL: "redis://redis:6379/0"
+      JELLYCORD_POSTGRES_URL: "postgres://postgres:postgres@postgres:5432/jellycord?sslmode=disable"
       JELLYCORD_JWT_SECRET: "dev-insecure-secret-change-me"
       JELLYCORD_ADMIN_KEY: "dev-admin-key-change-me"
     depends_on:
       - redis
+      - postgres
     ports:
       - "127.0.0.1:8080:8080"
 
 volumes:
   redis-data:
+  postgres-data:

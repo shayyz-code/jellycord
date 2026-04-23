@@ -6,6 +6,16 @@ services:
     volumes:
       - redis-data:/data
 
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in .env.secrets}"
+      POSTGRES_DB: "${POSTGRES_DB:-jellycord}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   server:
     build:
       context: .
@@ -15,10 +25,12 @@ services:
     #   docker compose --env-file .env.deploy -f docker-compose.prod.yml --env-file .env.secrets up -d --build
     depends_on:
       - redis
+      - postgres
     environment:
       JELLYCORD_ENV: production
       JELLYCORD_ADDR: ":8080"
       JELLYCORD_REDIS_URL: "redis://redis:6379/0"
+      JELLYCORD_POSTGRES_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jellycord}?sslmode=disable"
       JELLYCORD_JWT_SECRET: "${JELLYCORD_JWT_SECRET:?set in .env.secrets}"
       JELLYCORD_ADMIN_KEY: "${JELLYCORD_ADMIN_KEY:?set in .env.secrets}"
       JELLYCORD_BOOTSTRAP_ADMIN_USERNAME: "${JELLYCORD_BOOTSTRAP_ADMIN_USERNAME:-}"
@@ -30,3 +42,4 @@ services:
 
 volumes:
   redis-data:
+  postgres-data:
