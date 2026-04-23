@@ -336,6 +336,22 @@ func runChat(ctx context.Context, cfg config.Config, args []string) {
 		}
 	}()
 
+	// Heartbeat to keep connection alive
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := cc.Ping(ctx); err != nil {
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fatalf("TUI error: %v", err)
 	}
@@ -486,9 +502,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Send message
 			err := m.cc.SendText(context.Background(), val)
-			if err != nil {
-				m.err = err
-			}
+			m.err = err
 			m.textinput.Reset()
 			return m, nil
 		}
@@ -500,7 +514,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		m.err = msg.err
-		return m, tea.Quit
+		return m, nil
 	}
 
 	m.textinput, tiCmd = m.textinput.Update(msg)

@@ -65,10 +65,10 @@ func main() {
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           httpapi.New(cfg, st, j).Handler(),
-		ReadTimeout:       15 * time.Second,
+		ReadTimeout:       0,  // Disable for WebSockets
 		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		WriteTimeout:      0,  // Disable for WebSockets
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {

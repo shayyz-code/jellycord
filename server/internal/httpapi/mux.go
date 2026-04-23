@@ -218,6 +218,23 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	sub := s.hub.Subscribe(room)
 	defer sub.Close()
 
+	// Keep-alive heartbeat
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				err := c.Ping(r.Context())
+				if err != nil {
+					return
+				}
+			case <-r.Context().Done():
+				return
+			}
+		}
+	}()
+
 	// Writer: broadcast messages -> websocket
 	writeDone := make(chan struct{})
 	go func() {

@@ -28,6 +28,10 @@ func (c *ChatConn) Close(status websocket.StatusCode, reason string) error {
 	return c.conn.Close(status, reason)
 }
 
+func (c *ChatConn) Ping(ctx context.Context) error {
+	return c.conn.Ping(ctx)
+}
+
 func DialChat(ctx context.Context, serverBaseURL, room, token string) (*ChatConn, error) {
 	if strings.TrimSpace(room) == "" {
 		return nil, errors.New("room is required")
