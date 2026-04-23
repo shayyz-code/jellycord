@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	defaultServerURL = "http://127.0.0.1:8080"
+	defaultServerURL = "https://api.jellycord.com"
 	defaultRoom      = "general"
 
 	colorReset  = "\033[0m"

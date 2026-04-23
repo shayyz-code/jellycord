@@ -49,6 +49,21 @@ func Save(c Config) error {
 }
 
 func path() (string, error) {
+	// Priority 1: JELLYCORD_CONFIG environment variable
+	if p := os.Getenv("JELLYCORD_CONFIG"); p != "" {
+		return p, nil
+	}
+
+	// Priority 2: ~/.jellycord.json (User Home)
+	home, err := os.UserHomeDir()
+	if err == nil {
+		p := filepath.Join(home, ".jellycord.json")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	// Priority 3: OS-specific config dir (Standard)
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
