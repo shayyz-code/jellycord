@@ -2,12 +2,13 @@ package store
 
 import (
 	"context"
-	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
+	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 
@@ -45,15 +46,59 @@ type Status struct {
 
 type Store struct {
 	rdb *redis.Client
+	db  *sql.DB
 }
 
-func New(rdb *redis.Client) *Store {
-	return &Store{rdb: rdb}
+func New(rdb *redis.Client, db *sql.DB) *Store {
+	return &Store{rdb: rdb, db: db}
+}
+
+func (s *Store) InitSchema(ctx context.Context) error {
+	queries := []string{
+		`CREATE TABLE IF NOT EXISTS users (
+			username TEXT PRIMARY KEY,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'user',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS profiles (
+			username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
+			name TEXT,
+			bio TEXT,
+			avatar TEXT,
+			character TEXT,
+			banner TEXT,
+			primary_color TEXT,
+			links TEXT DEFAULT '{}',
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS statuses (
+			id TEXT PRIMARY KEY,
+			username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+			content TEXT NOT NULL,
+			mood TEXT,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_statuses_username ON statuses(username)`,
+		`CREATE INDEX IF NOT EXISTS idx_statuses_created_at ON statuses(created_at DESC)`,
+	}
+
+	for _, q := range queries {
+		if _, err := s.db.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Ping(ctx context.Context) error {
-	return s.rdb.Ping(ctx).Err()
+	if err := s.rdb.Ping(ctx).Err(); err != nil {
+		return err
+	}
+	return s.db.PingContext(ctx)
 }
+
+// --- Chat History (Redis) ---
 
 func (s *Store) SaveMessage(ctx context.Context, msg chat.Message) error {
 	if msg.Type != "message" {
@@ -107,6 +152,8 @@ func historyKey(room string) string {
 	return "jellycord:history:" + room
 }
 
+// --- Auth (Postgres) ---
+
 func (s *Store) CreateUser(ctx context.Context, username, password, role string) error {
 	username = normalizeUsername(username)
 	if username == "" || password == "" {
@@ -115,204 +162,149 @@ func (s *Store) CreateUser(ctx context.Context, username, password, role string)
 	if role == "" {
 		role = "user"
 	}
-	if role != "user" && role != "admin" {
-		return errors.New("invalid role")
-	}
-
-	key := userKey(username)
-	exists, err := s.rdb.Exists(ctx, key).Result()
-	if err != nil {
-		return err
-	}
-	if exists != 0 {
-		return ErrUserExists
-	}
 
 	hashBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
-	// Store as a hash so we can extend later.
-	_, err = s.rdb.HSet(ctx, key,
-		"username", username,
-		"role", role,
-		"password_hash", string(hashBytes),
-	).Result()
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, 
+		"INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)",
+		username, string(hashBytes), role)
+	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key") {
+			return ErrUserExists
+		}
+		return err
+	}
+
+	// Create initial profile
+	_, err = tx.ExecContext(ctx, "INSERT INTO profiles (username) VALUES ($1)", username)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) Authenticate(ctx context.Context, username, password string) (User, error) {
 	username = normalizeUsername(username)
-	key := userKey(username)
-
-	m, err := s.rdb.HGetAll(ctx, key).Result()
+	var u User
+	err := s.db.QueryRowContext(ctx, "SELECT username, password_hash, role FROM users WHERE username = $1", username).
+		Scan(&u.Username, &u.PasswordHash, &u.Role)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return User{}, ErrInvalidCredentials
+		}
 		return User{}, err
 	}
-	if len(m) == 0 {
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
 		return User{}, ErrInvalidCredentials
 	}
 
-	storedUser := m["username"]
-	storedRole := m["role"]
-	storedHash := m["password_hash"]
-	if storedUser == "" || storedHash == "" {
-		return User{}, ErrInvalidCredentials
-	}
-
-	// Constant-time compare for username normalization mismatch edge cases.
-	if subtle.ConstantTimeCompare([]byte(storedUser), []byte(username)) != 1 {
-		return User{}, ErrInvalidCredentials
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)); err != nil {
-		return User{}, ErrInvalidCredentials
-	}
-
-	if storedRole == "" {
-		storedRole = "user"
-	}
-
-	return User{
-		Username: username,
-		Role:     storedRole,
-	}, nil
+	return u, nil
 }
 
 func (s *Store) GetUser(ctx context.Context, username string) (User, error) {
 	username = normalizeUsername(username)
-	key := userKey(username)
-
-	m, err := s.rdb.HGetAll(ctx, key).Result()
+	var u User
+	err := s.db.QueryRowContext(ctx, "SELECT username, role FROM users WHERE username = $1", username).
+		Scan(&u.Username, &u.Role)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
 		return User{}, err
 	}
-	if len(m) == 0 {
-		return User{}, ErrUserNotFound
-	}
-	role := m["role"]
-	if role == "" {
-		role = "user"
-	}
-	return User{Username: username, Role: role}, nil
+	return u, nil
 }
 
-func userKey(username string) string {
-	return "jellycord:user:" + username
-}
-
-func profileKey(username string) string {
-	return "jellycord:profile:" + username
-}
-
-func statusKey(username string) string {
-	return "jellycord:statuses:" + username
-}
+// --- Profiles (Postgres) ---
 
 func (s *Store) GetProfile(ctx context.Context, username string) (Profile, error) {
 	username = normalizeUsername(username)
-	key := profileKey(username)
-	m, err := s.rdb.HGetAll(ctx, key).Result()
+	var p Profile
+	err := s.db.QueryRowContext(ctx, 
+		`SELECT username, COALESCE(name, ''), COALESCE(bio, ''), COALESCE(avatar, ''), 
+		        COALESCE(character, ''), COALESCE(banner, ''), COALESCE(primary_color, ''), links 
+		 FROM profiles WHERE username = $1`, username).
+		Scan(&p.Username, &p.Name, &p.Bio, &p.Avatar, &p.Character, &p.Banner, &p.PrimaryColor, &p.Links)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// Ensure user exists before returning a default profile
+			if _, err := s.GetUser(ctx, username); err != nil {
+				return Profile{}, err
+			}
+			return Profile{Username: username}, nil
+		}
 		return Profile{}, err
 	}
-	if len(m) == 0 {
-		return Profile{Username: username}, nil
-	}
-	return Profile{
-		Username:     username,
-		Name:         m["name"],
-		Bio:          m["bio"],
-		Avatar:       m["avatar"],
-		Character:    m["character"],
-		Banner:       m["banner"],
-		PrimaryColor: m["primary_color"],
-		Links:        m["links"],
-	}, nil
+	return p, nil
 }
 
 func (s *Store) UpdateProfile(ctx context.Context, p Profile) error {
 	p.Username = normalizeUsername(p.Username)
-	key := profileKey(p.Username)
-	_, err := s.rdb.HSet(ctx, key,
-		"name", p.Name,
-		"bio", p.Bio,
-		"avatar", p.Avatar,
-		"character", p.Character,
-		"banner", p.Banner,
-		"primary_color", p.PrimaryColor,
-		"links", p.Links,
-	).Result()
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE profiles SET name=$1, bio=$2, avatar=$3, character=$4, banner=$5, primary_color=$6, links=$7, updated_at=NOW()
+		 WHERE username=$8`,
+		p.Name, p.Bio, p.Avatar, p.Character, p.Banner, p.PrimaryColor, p.Links, p.Username)
 	return err
 }
+
+// --- Statuses (Postgres) ---
 
 func (s *Store) CreateStatus(ctx context.Context, st Status) error {
 	st.Username = normalizeUsername(st.Username)
 	if st.ID == "" {
 		st.ID = time.Now().Format("20060102150405") + "-" + st.Username
 	}
-	if st.CreatedAt == "" {
-		st.CreatedAt = time.Now().Format(time.RFC3339)
-	}
 
-	data, err := json.Marshal(st)
-	if err != nil {
-		return err
-	}
-
-	key := statusKey(st.Username)
-	globalKey := "jellycord:global:statuses"
-
-	pipe := s.rdb.Pipeline()
-	pipe.LPush(ctx, key, data)
-	pipe.LTrim(ctx, key, 0, 99)
-	pipe.LPush(ctx, globalKey, data)
-	pipe.LTrim(ctx, globalKey, 0, 99)
-	_, err = pipe.Exec(ctx)
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO statuses (id, username, content, mood) VALUES ($1, $2, $3, $4)",
+		st.ID, st.Username, st.Content, st.Mood)
 	return err
 }
 
 func (s *Store) GetStatuses(ctx context.Context, username string, limit int) ([]Status, error) {
-	var key string
+	var args []any
+	var q string
 	if username != "" {
-		key = statusKey(normalizeUsername(username))
+		q = "SELECT id, username, content, COALESCE(mood, ''), created_at FROM statuses WHERE username = $1 ORDER BY created_at DESC LIMIT $2"
+		args = []any{normalizeUsername(username), limit}
 	} else {
-		key = "jellycord:global:statuses"
+		q = "SELECT id, username, content, COALESCE(mood, ''), created_at FROM statuses ORDER BY created_at DESC LIMIT $1"
+		args = []any{limit}
 	}
 
-	data, err := s.rdb.LRange(ctx, key, 0, int64(limit-1)).Result()
+	rows_res, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer rows_res.Close()
 
-	statuses := make([]Status, 0, len(data))
-	for _, raw := range data {
+	var statuses []Status
+	for rows_res.Next() {
 		var st Status
-		if err := json.Unmarshal([]byte(raw), &st); err != nil {
-			continue
+		var createdAt time.Time
+		if err := rows_res.Scan(&st.ID, &st.Username, &st.Content, &st.Mood, &createdAt); err != nil {
+			return nil, err
 		}
+		st.CreatedAt = createdAt.Format(time.RFC3339)
 		statuses = append(statuses, st)
 	}
 	return statuses, nil
 }
 
 func (s *Store) DeleteStatus(ctx context.Context, username, statusID string) error {
-	key := statusKey(normalizeUsername(username))
-	data, err := s.rdb.LRange(ctx, key, 0, -1).Result()
-	if err != nil {
-		return err
-	}
-
-	for _, raw := range data {
-		var st Status
-		_ = json.Unmarshal([]byte(raw), &st)
-		if st.ID == statusID {
-			s.rdb.LRem(ctx, key, 1, raw)
-			break
-		}
-	}
-	return nil
+	_, err := s.db.ExecContext(ctx, "DELETE FROM statuses WHERE id = $1 AND username = $2", statusID, normalizeUsername(username))
+	return err
 }
 
 func normalizeUsername(u string) string {

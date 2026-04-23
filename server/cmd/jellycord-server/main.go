@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/shayyz-code/jellycord/server/internal/auth"
@@ -35,6 +37,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup Redis
 	rdbOpts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
 		slog.Error("invalid JELLYCORD_REDIS_URL", "error", err)
@@ -43,14 +46,33 @@ func main() {
 	rdb := redis.NewClient(rdbOpts)
 	defer rdb.Close()
 
+	// Setup Postgres
+	db, err := sql.Open("postgres", cfg.PostgresURL)
+	if err != nil {
+		slog.Error("failed to open postgres", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// Ping both
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		slog.Error("redis ping failed", "error", err)
 		os.Exit(1)
 	}
+	if err := db.PingContext(ctx); err != nil {
+		slog.Error("postgres ping failed", "error", err)
+		os.Exit(1)
+	}
 
-	st := store.New(rdb)
+	st := store.New(rdb, db)
+	if err := st.InitSchema(ctx); err != nil {
+		slog.Error("database schema init failed", "error", err)
+		os.Exit(1)
+	}
+
 	if err := bootstrapAdmin(ctx, st); err != nil {
 		slog.Error("bootstrap admin failed", "error", err)
 		os.Exit(1)
@@ -65,9 +87,9 @@ func main() {
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           httpapi.New(cfg, st, j).Handler(),
-		ReadTimeout:       0,  // Disable for WebSockets
+		ReadTimeout:       0, // Disable for WebSockets
 		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      0,  // Disable for WebSockets
+		WriteTimeout:      0, // Disable for WebSockets
 		IdleTimeout:       120 * time.Second,
 	}
 
