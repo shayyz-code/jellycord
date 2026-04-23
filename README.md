@@ -151,39 +151,63 @@ PORT=3001 npm run dev
 
 ### 5) Go Chat Server + CLI
 
-Build both binaries:
+JellyCord includes a production-ready Go backend and a modern TUI (Terminal User Interface) client.
+
+#### Installation (CLI)
+
+You can install the JellyCord CLI using several methods:
+
+- **Homebrew (macOS/Linux)**:
+  ```bash
+  brew tap shayyz-code/tap
+  brew install jellycord
+  ```
+- **Scoop (Windows)**:
+  ```powershell
+  scoop bucket add jellycord https://github.com/shayyz-code/scoop-bucket
+  scoop install jellycord
+  ```
+- **Shell Installer (Universal)**:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/shayyz-code/jellycord/main/scripts/install-cli.sh | bash
+  ```
+- **Go Install**:
+  ```bash
+  go install github.com/shayyz-code/jellycord/cli/cmd/jellycord@latest
+  ```
+
+#### Local Development
+
+Build both binaries locally:
 
 ```bash
 make go-build
 ```
 
-Run server locally (starts Redis dev dependency if needed):
+Start the server (automatically handles Redis via Docker):
 
 ```bash
 make server-run
 ```
 
-Use the CLI:
+The server uses structured JSON logging (`slog`) and supports graceful shutdown. You can configure it via a `.env` file (see `.env.example`).
+
+#### CLI Features
+
+- **Modern TUI**: Built with Bubble Tea and Lipgloss for a polished chat experience.
+- **Slash Commands**: Use `/help` in-app to see available commands like `/clear`, `/whoami`, and `/exit`.
+- **Session Persistence**: Automatically manages login tokens and room history.
+- **Auto-Login**: Prompts for credentials if no session is found.
+
+#### VPS Deployment
+
+Deploy your own JellyCord instance to a VPS with one command:
 
 ```bash
-./jellycord
+make deploy
 ```
 
-Default CLI behavior:
-
-- Running `jellycord` starts chat immediately.
-- If no token is saved yet, it interactively asks for username/password and logs in.
-- Token is saved to your local config and reused on next run.
-- If a saved token is expired, it automatically asks you to log in again.
-- You can set `JELLYCORD_SERVER_URL` to avoid passing `--server` repeatedly.
-
-Useful commands:
-
-```bash
-./jellycord login
-./jellycord whoami
-./jellycord admin create-user
-```
+This uses a push-based deployment system that synchronizes source code and configurations directly to your remote server.
 
 ## Notable Endpoints and Files
 
