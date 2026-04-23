@@ -59,12 +59,12 @@ func formatMessageTime(sentAtMs int64) string {
 
 func formatMessage(msg client.Message, isUnread bool) string {
         ts := formatMessageTime(msg.SentAtMs)
-        unreadMarker := ""
+        unreadMarker := "  "
         if isUnread {
                 unreadMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("• ")
         }
         text := emoji.Replace(msg.Text)
-        return fmt.Sprintf("%s%s %s %s", unreadMarker, userStyle(msg.From), timeStyle(ts), msgStyle(text))
+        return fmt.Sprintf("%s%s\t%s\t%s", unreadMarker, userStyle(msg.From), timeStyle(ts), msgStyle(text))
 }
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

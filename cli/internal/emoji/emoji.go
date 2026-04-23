@@ -1,6 +1,7 @@
 package emoji
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/kyokomi/emoji/v2"
@@ -16,7 +17,7 @@ func Replace(s string) string {
 	return emoji.Sprint(s)
 }
 
-// Suggestions returns a list of emoji aliases that start with the given prefix.
+// Suggestions returns a list of emoji aliases that start with the given prefix, sorted alphabetically.
 func Suggestions(prefix string) []string {
 	if !strings.HasPrefix(prefix, ":") {
 		return nil
@@ -32,5 +33,6 @@ func Suggestions(prefix string) []string {
 			matches = append(matches, name)
 		}
 	}
+	sort.Strings(matches)
 	return matches
 }
