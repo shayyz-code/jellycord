@@ -413,6 +413,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - headerHeight - footerHeight
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
 		m.textinput.Width = msg.Width - 5
 		return m, nil
 
@@ -444,7 +445,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messages = append(m.messages, formatMessage(client.Message(msg), true))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
-		return m, nil
 
 	case errMsg:
 		m.err = msg.err
