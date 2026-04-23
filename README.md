@@ -192,6 +192,25 @@ make server-run
 
 The server uses structured JSON logging (`slog`) and supports graceful shutdown. You can configure it via a `.env` file (see `.env.example`).
 
+#### CLI Configuration
+
+The Jellycord CLI is designed to be easily configurable. It looks for its configuration file in the following order of priority:
+
+1.  **Environment Variable**: `JELLYCORD_CONFIG=/path/to/config.json`
+2.  **Home Directory**: `~/.jellycord.json` (macOS/Linux) or `%USERPROFILE%\.jellycord.json` (Windows)
+3.  **Standard OS Config**: `~/Library/Application Support/jellycord/config.json` (macOS) or `%AppData%\jellycord\config.json` (Windows)
+
+Example `~/.jellycord.json`:
+
+```json
+{
+  "server_url": "https://api.jellycord.com",
+  "token": "your-jwt-token-here",
+  "username": "your-username",
+  "last_room": "general"
+}
+```
+
 #### CLI Features
 
 - **Modern TUI**: Built with Bubble Tea and Lipgloss for a polished chat experience.
