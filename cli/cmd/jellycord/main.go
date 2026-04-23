@@ -345,13 +345,18 @@ type chatMsg client.Message
 type errMsg struct{ err error }
 
 type model struct {
-	cc        *client.ChatConn
-	room      string
-	username  string
-	viewport  viewport.Model
-	textinput textinput.Model
-	messages  []string
-	err       error
+	cc              *client.ChatConn
+	room            string
+	username        string
+	viewport        viewport.Model
+	textinput       textinput.Model
+	messages        []string
+	err             error
+	showCommands    bool
+	commandIndex    int
+	filteredCmds    []string
+	availableCmds   []string
+	commandDescs    map[string]string
 }
 
 func initialModelWithHistory(cc *client.ChatConn, room, username string, history []client.Message) model {
@@ -360,6 +365,15 @@ func initialModelWithHistory(cc *client.ChatConn, room, username string, history
 	ti.Focus()
 	ti.CharLimit = 256
 	ti.Width = 80
+
+	availableCmds := []string{"/help", "/clear", "/exit", "/quit", "/whoami"}
+	commandDescs := map[string]string{
+		"/help":   "Show available commands",
+		"/clear":  "Clear message history",
+		"/exit":   "Leave chat",
+		"/quit":   "Leave chat",
+		"/whoami": "Show current user info",
+	}
 
 	messages := []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)}
 	if len(history) > 0 {
@@ -372,11 +386,13 @@ func initialModelWithHistory(cc *client.ChatConn, room, username string, history
 	}
 
 	return model{
-		cc:        cc,
-		room:      room,
-		username:  username,
-		textinput: ti,
-		messages:  messages,
+		cc:            cc,
+		room:          room,
+		username:      username,
+		textinput:     ti,
+		messages:      messages,
+		availableCmds: availableCmds,
+		commandDescs:  commandDescs,
 	}
 }
 
@@ -387,12 +403,23 @@ func initialModel(cc *client.ChatConn, room, username string) model {
 	ti.CharLimit = 256
 	ti.Width = 80
 
+	availableCmds := []string{"/help", "/clear", "/exit", "/quit", "/whoami"}
+	commandDescs := map[string]string{
+		"/help":   "Show available commands",
+		"/clear":  "Clear message history",
+		"/exit":   "Leave chat",
+		"/quit":   "Leave chat",
+		"/whoami": "Show current user info",
+	}
+
 	return model{
-		cc:        cc,
-		room:      room,
-		username:  username,
-		textinput: ti,
-		messages:  []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)},
+		cc:            cc,
+		room:          room,
+		username:      username,
+		textinput:     ti,
+		messages:      []string{fmt.Sprintf("Welcome to #%s, %s!", room, username)},
+		availableCmds: availableCmds,
+		commandDescs:  commandDescs,
 	}
 }
 
@@ -418,6 +445,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.showCommands {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.commandIndex > 0 {
+					m.commandIndex--
+				}
+				return m, nil
+			case tea.KeyDown:
+				if m.commandIndex < len(m.filteredCmds)-1 {
+					m.commandIndex++
+				}
+				return m, nil
+			case tea.KeyTab, tea.KeyEnter:
+				if len(m.filteredCmds) > 0 {
+					m.textinput.SetValue(m.filteredCmds[m.commandIndex] + " ")
+					m.textinput.SetCursor(len(m.textinput.Value()))
+					m.showCommands = false
+					return m, nil
+				}
+			case tea.KeyEsc:
+				m.showCommands = false
+				return m, nil
+			}
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
@@ -452,6 +504,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	m.textinput, tiCmd = m.textinput.Update(msg)
+
+	// Command suggestions logic
+	val := m.textinput.Value()
+	if strings.HasPrefix(val, "/") && !strings.Contains(val, " ") {
+		m.showCommands = true
+		m.filteredCmds = []string{}
+		for _, cmd := range m.availableCmds {
+			if strings.HasPrefix(cmd, val) {
+				m.filteredCmds = append(m.filteredCmds, cmd)
+			}
+		}
+		if m.commandIndex >= len(m.filteredCmds) {
+			m.commandIndex = 0
+		}
+		if len(m.filteredCmds) == 0 {
+			m.showCommands = false
+		}
+	} else {
+		m.showCommands = false
+	}
+
 	m.viewport, vpCmd = m.viewport.Update(msg)
 	return m, tea.Batch(tiCmd, vpCmd)
 }
@@ -487,13 +560,49 @@ func (m model) View() string {
 		Foreground(lipgloss.Color("36")).
 		Render(fmt.Sprintf(" Jellycord - #%s ", m.room))
 
+	content := m.viewport.View()
+
+	// Command overlay
+	if m.showCommands && len(m.filteredCmds) > 0 {
+		var b strings.Builder
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color("36")).
+			Bold(true).
+			Render(" Available Commands:") + "\n")
+
+		for i, cmd := range m.filteredCmds {
+			style := lipgloss.NewStyle().PaddingLeft(2)
+			if i == m.commandIndex {
+				style = style.Foreground(lipgloss.Color("0")).
+					Background(lipgloss.Color("36")).
+					Bold(true)
+			} else {
+				style = style.Foreground(lipgloss.Color("255"))
+			}
+
+			line := fmt.Sprintf("%-10s %s", cmd, m.commandDescs[cmd])
+			b.WriteString(style.Render(line) + "\n")
+		}
+
+		overlay := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("36")).
+			Padding(0, 1).
+			Render(b.String())
+
+		// We need to place this overlay at the bottom of the viewport area
+		// For simplicity in a basic TUI, we can just append it before the footer
+		// but a more advanced way would be absolute positioning.
+		content += "\n" + overlay
+	}
+
 	footer := fmt.Sprintf("\n %s", m.textinput.View())
 
 	if m.err != nil {
 		footer += "\n " + errStyle(fmt.Sprintf("Error: %v", m.err))
 	}
 
-	return header + "\n" + m.viewport.View() + footer
+	return header + "\n" + content + footer
 }
 
 func promptLine(label string) string {
