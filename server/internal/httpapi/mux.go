@@ -370,6 +370,10 @@ func (s *Server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 	p, err := s.store.GetProfile(r.Context(), username)
 	if err != nil {
+		if errors.Is(err, store.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "profile not found"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to get profile"})
 		return
 	}

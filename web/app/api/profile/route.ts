@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const username = searchParams.get("username")
   const authHeader = request.headers.get("Authorization")
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : undefined
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : undefined
 
   if (username) {
     try {
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
         name: data.name || data.username,
         bio: data.bio || "",
         avatar: data.avatar || "/placeholder-user.jpg",
-        character: data.character || "/characters/pixel-cat.jpg",
+        character: data.character || "/characters/pixel-cat.png",
         banner: data.banner || "/banners/default-banner.jpg",
         primaryColor: data.primary_color || "#f472b6",
         links: data.links ? JSON.parse(data.links) : {},
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
       name: data.name || data.username,
       bio: data.bio || "",
       avatar: data.avatar || "/placeholder-user.jpg",
-      character: data.character || "/characters/pixel-cat.jpg",
+      character: data.character || "/characters/pixel-cat.png",
       banner: data.banner || "/banners/default-banner.jpg",
       primaryColor: data.primary_color || "#f472b6",
       links: data.links ? JSON.parse(data.links) : {},
@@ -62,7 +64,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("Authorization")
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : undefined
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : undefined
 
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -80,17 +84,21 @@ export async function POST(request: NextRequest) {
       links: JSON.stringify(body.links || {}),
     }
 
-    const data = await apiFetchServer("/profile", {
-      method: "POST",
-      body: JSON.stringify(profileUpdate),
-    }, token)
+    const data = await apiFetchServer(
+      "/profile",
+      {
+        method: "POST",
+        body: JSON.stringify(profileUpdate),
+      },
+      token,
+    )
 
     const profile = {
       username: data.username,
       name: data.name || data.username,
       bio: data.bio || "",
       avatar: data.avatar || "/placeholder-user.jpg",
-      character: data.character || "/characters/pixel-cat.jpg",
+      character: data.character || "/characters/pixel-cat.png",
       banner: data.banner || "/banners/default-banner.jpg",
       primaryColor: data.primary_color || "#f472b6",
       links: data.links ? JSON.parse(data.links) : {},

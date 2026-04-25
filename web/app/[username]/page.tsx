@@ -1,45 +1,34 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { PublicProfile } from "./public-profile"
+import { apiFetchServer } from "@/lib/api-server"
 
 // Demo profiles store (shared with API in a real app)
 async function getProfile(username: string) {
-  // In production, this would fetch from your API
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL}`
-    : "http://localhost:3000"
-
-  console.log("base url: ", baseUrl)
-
   try {
-    const res = await fetch(`${baseUrl}/api/profile?username=${username}`, {
-      cache: "no-store",
-    })
-
-    if (!res.ok) return null
-
-    const data = await res.json()
-    return data.profile
-  } catch {
+    const data = await apiFetchServer(`/profile/${username}`)
+    return {
+      username: data.username,
+      name: data.name || data.username,
+      bio: data.bio || "",
+      avatar: data.avatar || "/placeholder-user.jpg",
+      character: data.character || "/characters/pixel-cat.png",
+      banner: data.banner || "/banners/default-banner.jpg",
+      primaryColor: data.primary_color || "#f472b6",
+      links: data.links ? JSON.parse(data.links) : {},
+    }
+  } catch (error) {
+    console.error("Failed to fetch profile:", error)
     return null
   }
 }
 
 async function getStatuses(username: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL}`
-    : "http://localhost:3000"
-
   try {
-    const res = await fetch(`${baseUrl}/api/status?username=${username}`, {
-      cache: "no-store",
-    })
-
-    if (!res.ok) return []
-
-    const data = await res.json()
-    return data.statuses || []
-  } catch {
+    const data = await apiFetchServer(`/statuses?username=${username}`)
+    return data || []
+  } catch (error) {
+    console.error("Failed to fetch statuses:", error)
     return []
   }
 }

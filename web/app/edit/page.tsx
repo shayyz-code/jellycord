@@ -69,7 +69,7 @@ export default function EditProfilePage() {
   const [bio, setBio] = useState("")
   const [primaryColor, setPrimaryColor] = useState("#f472b6")
   const [avatar, setAvatar] = useState("/placeholder-user.jpg")
-  const [character, setCharacter] = useState("/characters/pixel-cat.jpg")
+  const [character, setCharacter] = useState("/characters/pixel-cat.png")
   const [banner, setBanner] = useState("/banners/default-banner.jpg")
   const [links, setLinks] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -96,7 +96,7 @@ export default function EditProfilePage() {
           setBio(data.profile.bio || "")
           setPrimaryColor(data.profile.primaryColor || "#f472b6")
           setAvatar(data.profile.avatar || "/placeholder-user.jpg")
-          setCharacter(data.profile.character || "/characters/pixel-cat.jpg")
+          setCharacter(data.profile.character || "/characters/pixel-cat.png")
           setBanner(data.profile.banner || "/banners/default-banner.jpg")
           setLinks(data.profile.links || {})
         }
@@ -343,10 +343,7 @@ export default function EditProfilePage() {
                   </div>
                   <div>
                     <Label className="mb-3 block">Banner</Label>
-                    <BannerPicker
-                      banner={banner}
-                      onBannerChange={setBanner}
-                    />
+                    <BannerPicker banner={banner} onBannerChange={setBanner} />
                   </div>
                 </CardContent>
               </Card>

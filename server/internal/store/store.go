@@ -233,7 +233,7 @@ func (s *Store) GetProfile(ctx context.Context, username string) (Profile, error
 	var p Profile
 	err := s.db.QueryRowContext(ctx, 
 		`SELECT username, COALESCE(name, ''), COALESCE(bio, ''), COALESCE(avatar, ''), 
-		        COALESCE(character, ''), COALESCE(banner, ''), COALESCE(primary_color, ''), links 
+		        COALESCE(character, ''), COALESCE(banner, ''), COALESCE(primary_color, ''), COALESCE(links, '{}') 
 		 FROM profiles WHERE username = $1`, username).
 		Scan(&p.Username, &p.Name, &p.Bio, &p.Avatar, &p.Character, &p.Banner, &p.PrimaryColor, &p.Links)
 	if err != nil {
@@ -242,7 +242,15 @@ func (s *Store) GetProfile(ctx context.Context, username string) (Profile, error
 			if _, err := s.GetUser(ctx, username); err != nil {
 				return Profile{}, err
 			}
-			return Profile{Username: username}, nil
+			return Profile{
+				Username:     username,
+				Name:         username,
+				Avatar:       "/placeholder-user.jpg",
+				Character:    "/characters/pixel-cat.png",
+				Banner:       "/banners/default-banner.jpg",
+				PrimaryColor: "#f472b6",
+				Links:        "{}",
+			}, nil
 		}
 		return Profile{}, err
 	}

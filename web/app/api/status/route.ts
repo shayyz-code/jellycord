@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await apiFetchServer(`/statuses?username=${username}&limit=${limit}`)
-    return NextResponse.json({ statuses: data.statuses })
+    return NextResponse.json({ statuses: data })
   } catch (error) {
     return NextResponse.json({ statuses: [] })
   }
